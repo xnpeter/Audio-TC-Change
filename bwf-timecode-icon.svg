@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BWF Timecode Batch">
+  <rect width="512" height="512" rx="96" fill="#202a36"/>
+  <rect x="68" y="96" width="376" height="320" rx="44" fill="#ffffff"/>
+  <rect x="96" y="132" width="320" height="54" rx="18" fill="#e7f4f2"/>
+  <path d="M128 159h256" stroke="#0f766e" stroke-width="18" stroke-linecap="round" stroke-dasharray="28 26"/>
+  <rect x="96" y="224" width="320" height="126" rx="28" fill="#f7f9fb" stroke="#d7dee8" stroke-width="10"/>
+  <text x="256" y="304" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="54" font-weight="800" fill="#202a36">TC</text>
+  <circle cx="364" cy="364" r="44" fill="#0f766e"/>
+  <path d="M344 364h40M364 344v40" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+</svg>

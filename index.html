@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BWF Timecode Batch</title>
+  <meta name="theme-color" content="#202a36">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BWF Timecode">
+  <link rel="manifest" href="./bwf-timecode.webmanifest">
+  <link rel="icon" href="./bwf-timecode-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./bwf-timecode-icon-192.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --ink: #18202a;
+      --muted: #667085;
+      --soft: #f7f9fb;
+      --line: #d7dee8;
+      --accent: #0f766e;
+      --accent-strong: #0b5f59;
+      --accent-soft: #e7f4f2;
+      --blue: #2f5f98;
+      --danger: #b42318;
+      --warn: #b54708;
+      --ok: #087443;
+      --shadow: 0 18px 50px rgba(24, 32, 42, 0.12);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, #f7f9fc 0, var(--bg) 260px);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      height: 40px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 700;
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+    }
+
+    button:hover { border-color: #aab4c3; transform: translateY(-1px); }
+    button:disabled { opacity: 0.48; cursor: not-allowed; }
+    button:disabled:hover { transform: none; }
+
+    .primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(15, 118, 110, 0.18);
+    }
+
+    .primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
+
+    .danger {
+      border-color: #f4c7c3;
+      color: var(--danger);
+      background: #fffafa;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    header {
+      background: #202a36;
+      color: #fff;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    h1 {
+      font-size: 20px;
+      line-height: 1.2;
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .title-block {
+      display: grid;
+      gap: 4px;
+    }
+
+    .subtitle {
+      color: #c8d2df;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .header-meta {
+      color: #d7dee8;
+      font-size: 13px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .install-btn {
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 13px;
+      box-shadow: none;
+    }
+
+    .install-btn[hidden] {
+      display: none;
+    }
+
+    .install-btn:hover {
+      transform: none;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .toolbar {
+      background: rgba(255, 255, 255, 0.92);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 28px;
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto minmax(190px, 230px) minmax(112px, 130px) auto auto;
+      gap: 12px;
+      align-items: end;
+      backdrop-filter: blur(16px);
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    input, select {
+      height: 40px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 0 11px;
+      min-width: 0;
+      font-weight: 650;
+    }
+
+    input:focus, select:focus, button:focus {
+      outline: 3px solid rgba(15, 118, 110, 0.18);
+      outline-offset: 1px;
+    }
+
+    .folder-field {
+      min-width: 0;
+    }
+
+    .timecode-control {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) 30px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .timecode-control:focus-within {
+      outline: 3px solid rgba(15, 118, 110, 0.18);
+      outline-offset: 1px;
+      border-color: #a7c9c5;
+    }
+
+    .timecode-control input {
+      border: 0;
+      border-radius: 0;
+      height: 40px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }
+
+    .timecode-control input:focus {
+      outline: none;
+    }
+
+    .sign-toggle {
+      width: 38px;
+      height: 40px;
+      padding: 0;
+      border: 0;
+      border-right: 1px solid var(--line);
+      border-radius: 0;
+      justify-content: center;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-size: 18px;
+      font-weight: 850;
+      box-shadow: none;
+    }
+
+    .sign-toggle[data-sign="-1"] {
+      background: #fff3e5;
+      color: var(--warn);
+    }
+
+    .sign-toggle:hover {
+      transform: none;
+      background: #dff0ed;
+    }
+
+    .sign-toggle[data-sign="-1"]:hover {
+      background: #ffe7c7;
+    }
+
+    .tc-steppers {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      border-left: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .tc-step {
+      height: 20px;
+      width: 30px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      justify-content: center;
+      font-size: 10px;
+      line-height: 1;
+      color: #475467;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .tc-step + .tc-step {
+      border-top: 1px solid var(--line);
+    }
+
+    .tc-step:hover {
+      transform: none;
+      background: #edf3f7;
+    }
+
+    .folder-name {
+      height: 40px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 10px 11px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    main {
+      padding: 20px 28px 28px;
+      display: grid;
+      gap: 16px;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      min-height: 72px;
+      box-shadow: 0 8px 24px rgba(24, 32, 42, 0.05);
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+      letter-spacing: 0;
+    }
+
+    .workspace {
+      min-height: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+    }
+
+    .table-head {
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .table-title {
+      font-size: 15px;
+      font-weight: 750;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .phase {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      min-height: 330px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 1260px;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #edf0f5;
+      padding: 10px 11px;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 750;
+      border-bottom: 1px solid var(--line);
+    }
+
+    tbody tr:hover { background: #f8fbfb; }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pending {
+      color: #98a2b3;
+    }
+
+    .new-value {
+      color: var(--accent-strong);
+      font-weight: 750;
+    }
+
+    .empty {
+      height: 260px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 14px;
+      background: linear-gradient(180deg, #fff, #fbfcfd);
+    }
+
+    .log {
+      min-height: 46px;
+      max-height: 100px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      background: #202a36;
+      color: #475467;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      padding: 10px 14px;
+      white-space: pre-wrap;
+      color: #dce5ef;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill.ok { color: var(--ok); background: #e6f4ee; }
+    .pill.idle { color: #475467; background: #edf1f5; }
+    .pill.warn { color: var(--warn); background: #fff3e5; }
+    .pill.err { color: var(--danger); background: #fef0ef; }
+
+    @media (max-width: 980px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .header-meta { justify-content: flex-start; }
+      .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+      .folder-field { grid-column: auto; }
+      #chooseBtn { grid-column: auto; }
+      .stats { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+    }
+
+    @media (max-width: 620px) {
+      header, .toolbar, main { padding-left: 14px; padding-right: 14px; }
+      .toolbar { grid-template-columns: 1fr; }
+      .folder-field, #chooseBtn { grid-column: auto; }
+      .stats { grid-template-columns: 1fr; }
+      button { width: 100%; justify-content: center; }
+      .table-head { align-items: flex-start; flex-direction: column; }
+      .status { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title-block">
+        <h1>BWF Timecode Batch</h1>
+        <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码</div>
+      </div>
+      <div class="header-meta">
+        <span class="badge">RIFF/WAV bext TimeReference</span>
+        <span class="badge">本地处理</span>
+        <button id="installBtn" class="install-btn" type="button" hidden>安装应用</button>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="controls">
+      <label class="folder-field">
+        文件夹
+        <div id="folderName" class="folder-name">未选择</div>
+      </label>
+      <button id="chooseBtn" title="选择文件夹">选择文件夹</button>
+
+      <label>
+        偏移时间码
+        <div class="timecode-control">
+          <button id="offsetSignBtn" class="sign-toggle" type="button" data-sign="1" title="切换加/减偏移" aria-label="切换加减偏移">+</button>
+          <input id="offsetInput" value="00:00:00:00" inputmode="numeric" aria-label="offset timecode" autocomplete="off" spellcheck="false">
+          <div class="tc-steppers">
+            <button id="tcUpBtn" class="tc-step" type="button" title="增加一帧">▲</button>
+            <button id="tcDownBtn" class="tc-step" type="button" title="减少一帧">▼</button>
+          </div>
+        </div>
+      </label>
+
+      <label>
+        帧率
+        <select id="fpsInput" aria-label="frame rate">
+          <option value="24" selected>24.00</option>
+          <option value="23.976">23.976</option>
+          <option value="25">25.00</option>
+          <option value="29.97">29.97</option>
+          <option value="30">30.00</option>
+          <option value="48">48.00</option>
+        </select>
+      </label>
+
+      <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
+      <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
+    </section>
+
+    <main>
+      <section class="stats" aria-label="summary">
+        <div class="stat"><span>文件</span><strong id="fileCount">0</strong></div>
+        <div class="stat"><span>偏移帧</span><strong id="offsetFrames">-</strong></div>
+        <div class="stat"><span>偏移采样</span><strong id="offsetSamples">-</strong></div>
+        <div class="stat"><span>采样率</span><strong id="sampleRates">-</strong></div>
+        <div class="stat"><span>状态</span><strong id="stateText">待机</strong></div>
+      </section>
+
+      <section class="workspace">
+        <div class="table-head">
+          <div class="table-title">音频文件 <span id="phasePill" class="phase">原始信息</span></div>
+          <div id="statusLine" class="status">选择文件夹后显示原始信息</div>
+        </div>
+        <div class="table-wrap">
+          <table id="previewTable" hidden>
+            <thead>
+              <tr>
+                <th>文件</th>
+                <th>采样率</th>
+                <th>声道</th>
+                <th>位深</th>
+                <th>原始起始</th>
+                <th>新起始</th>
+                <th>原始结束</th>
+                <th>新结束</th>
+                <th>原始 TimeReference</th>
+                <th>新 TimeReference</th>
+                <th>时长</th>
+                <th>结果</th>
+              </tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+          <div id="emptyState" class="empty">选择文件夹后显示 WAV 原始时间码信息</div>
+        </div>
+        <div id="log" class="log">Ready.</div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const LITTLE = true;
+    const WAV_SUFFIX = /\.(wav|wave)$/i;
+
+    const els = {
+      folderName: document.getElementById("folderName"),
+      offsetSignBtn: document.getElementById("offsetSignBtn"),
+      offsetInput: document.getElementById("offsetInput"),
+      tcUpBtn: document.getElementById("tcUpBtn"),
+      tcDownBtn: document.getElementById("tcDownBtn"),
+      fpsInput: document.getElementById("fpsInput"),
+      chooseBtn: document.getElementById("chooseBtn"),
+      previewBtn: document.getElementById("previewBtn"),
+      applyBtn: document.getElementById("applyBtn"),
+      fileCount: document.getElementById("fileCount"),
+      offsetFrames: document.getElementById("offsetFrames"),
+      offsetSamples: document.getElementById("offsetSamples"),
+      sampleRates: document.getElementById("sampleRates"),
+      stateText: document.getElementById("stateText"),
+      installBtn: document.getElementById("installBtn"),
+      statusLine: document.getElementById("statusLine"),
+      phasePill: document.getElementById("phasePill"),
+      previewTable: document.getElementById("previewTable"),
+      previewBody: document.getElementById("previewBody"),
+      emptyState: document.getElementById("emptyState"),
+      log: document.getElementById("log"),
+    };
+
+    let directoryHandle = null;
+    let records = [];
+    let previews = [];
+    let activeOffset = null;
+
+    function setState(text, kind = "ok") {
+      els.stateText.textContent = text;
+      els.stateText.style.color = kind === "err" ? "var(--danger)" : kind === "warn" ? "var(--warn)" : "var(--ink)";
+    }
+
+    function log(line) {
+      const time = new Date().toLocaleTimeString();
+      els.log.textContent = `[${time}] ${line}\n` + els.log.textContent;
+    }
+
+    function gcd(a, b) {
+      a = BigInt(a); b = BigInt(b);
+      while (b !== 0n) {
+        const t = b;
+        b = a % b;
+        a = t;
+      }
+      return a < 0n ? -a : a;
+    }
+
+    function frac(n, d = 1n) {
+      if (d === 0n) throw new Error("Invalid fraction.");
+      if (d < 0n) { n = -n; d = -d; }
+      const g = gcd(n, d);
+      return { n: n / g, d: d / g };
+    }
+
+    function addFrac(a, b) {
+      return frac(a.n * b.d + b.n * a.d, a.d * b.d);
+    }
+
+    function mulFrac(a, b) {
+      return frac(a.n * b.n, a.d * b.d);
+    }
+
+    function divFrac(a, b) {
+      return frac(a.n * b.d, a.d * b.n);
+    }
+
+    function floorFrac(a) {
+      return a.n / a.d;
+    }
+
+    function nominalFpsFor(fps) {
+      return BigInt(Math.round(Number(fps.n) / Number(fps.d)));
+    }
+
+    function parseFps(value) {
+      const presets = {
+        "23.976": frac(24000n, 1001n),
+        "23.98": frac(24000n, 1001n),
+        "24": frac(24n),
+        "25": frac(25n),
+        "29.97": frac(30000n, 1001n),
+        "30": frac(30n),
+        "48": frac(48n),
+      };
+      if (presets[value]) return presets[value];
+      if (value.includes("/")) {
+        const [n, d] = value.split("/").map(v => BigInt(v.trim()));
+        return frac(n, d);
+      }
+      const parts = value.split(".");
+      if (parts.length === 1) return frac(BigInt(parts[0]));
+      const scale = 10n ** BigInt(parts[1].length);
+      return frac(BigInt(parts[0]) * scale + BigInt(parts[1]), scale);
+    }
+
+    function offsetSign() {
+      return els.offsetSignBtn.dataset.sign === "-1" ? -1n : 1n;
+    }
+
+    function parseOffset(raw, fps) {
+      const { hh, mm, ss, ff } = parseTimecodeParts(raw, fps);
+      const sign = offsetSign();
+      const frames = timecodeToNominalFrames(raw, fps) * sign;
+      const offsetSeconds = divFrac(frac(frames), fps);
+      const signLabel = sign < 0n ? "-" : "+";
+      return {
+        label: `${signLabel}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}:${String(ff).padStart(2, "0")}`,
+        fps,
+        frames,
+        seconds: offsetSeconds,
+      };
+    }
+
+    function parseTimecodeParts(raw, fps) {
+      const parts = raw.trim().replaceAll(";", ":").split(":");
+      if (parts.length !== 4) throw new Error("时间码格式应为 HH:MM:SS:FF");
+      const [hh, mm, ss, ff] = parts.map(part => {
+        if (!/^\d+$/.test(part)) throw new Error("时间码只能包含数字");
+        return Number(part);
+      });
+      const nominalFps = Number(nominalFpsFor(fps));
+      if (hh < 0 || mm > 59 || ss > 59) throw new Error("分钟和秒不能超过 59");
+      if (ff >= nominalFps) throw new Error(`帧数必须小于 ${nominalFps}`);
+      return { hh, mm, ss, ff };
+    }
+
+    function timecodeToNominalFrames(raw, fps) {
+      const { hh, mm, ss, ff } = parseTimecodeParts(raw, fps);
+      const nominal = nominalFpsFor(fps);
+      return BigInt(hh * 3600 + mm * 60 + ss) * nominal + BigInt(ff);
+    }
+
+    function framesToTimecode(frames, fps) {
+      const nominal = nominalFpsFor(fps);
+      let safeFrames = frames < 0n ? 0n : frames;
+      const ff = safeFrames % nominal;
+      const totalSeconds = safeFrames / nominal;
+      const ss = totalSeconds % 60n;
+      const mm = (totalSeconds / 60n) % 60n;
+      const hh = totalSeconds / 3600n;
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}:${String(ff).padStart(2, "0")}`;
+    }
+
+    function formatEightDigits(digits) {
+      const padded = digits.padEnd(8, "0").slice(0, 8);
+      return `${padded.slice(0, 2)}:${padded.slice(2, 4)}:${padded.slice(4, 6)}:${padded.slice(6, 8)}`;
+    }
+
+    function clampDigits(raw) {
+      return raw.replace(/\D/g, "").slice(0, 8);
+    }
+
+    function digitIndexFromCaret(caret = els.offsetInput.selectionStart ?? els.offsetInput.value.length) {
+      const digitPositions = [0, 1, 3, 4, 6, 7, 9, 10];
+      let index = digitPositions.findIndex(position => position >= caret);
+      if (index === -1) index = digitPositions.length - 1;
+      if (els.offsetInput.value[caret] === ":") index = Math.min(digitPositions.length - 1, index + 1);
+      return index;
+    }
+
+    function setTimecodeValueFromDigits(digits, caretDigitIndex = null) {
+      els.offsetInput.value = formatEightDigits(digits);
+      if (caretDigitIndex !== null) {
+        const digitPositions = [0, 1, 3, 4, 6, 7, 9, 10];
+        const safe = Math.max(0, Math.min(digitPositions.length - 1, caretDigitIndex));
+        els.offsetInput.setSelectionRange(digitPositions[safe], digitPositions[safe] + 1);
+      }
+    }
+
+    function normalizeTimecodeInput(caretDigitIndex = null) {
+      setTimecodeValueFromDigits(clampDigits(els.offsetInput.value), caretDigitIndex);
+      invalidatePreview();
+    }
+
+    function stepTimecodeByFrames(deltaFrames) {
+      const fps = parseFps(els.fpsInput.value);
+      const frames = timecodeToNominalFrames(els.offsetInput.value, fps) + BigInt(deltaFrames);
+      els.offsetInput.value = framesToTimecode(frames, fps);
+      els.offsetInput.setSelectionRange(11, 11);
+      invalidatePreview();
+    }
+
+    function timecodeDigitIndexAtCaret() {
+      const caret = els.offsetInput.selectionStart ?? els.offsetInput.value.length;
+      const digitPositions = [0, 1, 3, 4, 6, 7, 9, 10];
+      let index = digitPositions.findIndex(position => position >= caret);
+      if (index === -1) index = digitPositions.length - 1;
+      if (els.offsetInput.value[caret] === ":") index = Math.max(0, index - 1);
+      return index;
+    }
+
+    function stepTimecodeAtCaret(direction) {
+      const fps = parseFps(els.fpsInput.value);
+      const nominal = nominalFpsFor(fps);
+      const weights = [
+        nominal * 36000n,
+        nominal * 3600n,
+        nominal * 600n,
+        nominal * 60n,
+        nominal * 10n,
+        nominal,
+        10n,
+        1n,
+      ];
+      const digitPositions = [0, 1, 3, 4, 6, 7, 9, 10];
+      const digitIndex = timecodeDigitIndexAtCaret();
+      const frames = timecodeToNominalFrames(els.offsetInput.value, fps) + weights[digitIndex] * BigInt(direction);
+      els.offsetInput.value = framesToTimecode(frames, fps);
+      const caret = digitPositions[digitIndex];
+      els.offsetInput.setSelectionRange(caret, caret + 1);
+      invalidatePreview();
+    }
+
+    function insertTimecodeDigits(text) {
+      const incoming = clampDigits(text);
+      if (!incoming) return;
+      const selectionStart = els.offsetInput.selectionStart ?? 0;
+      const selectionEnd = els.offsetInput.selectionEnd ?? selectionStart;
+      const wholeValueSelected = selectionStart === 0 && selectionEnd >= els.offsetInput.value.length;
+      const oldDigits = wholeValueSelected ? "00000000" : clampDigits(els.offsetInput.value).padEnd(8, "0").slice(0, 8);
+      const start = digitIndexFromCaret(els.offsetInput.selectionStart ?? 0);
+      const nextDigits = (
+        oldDigits.slice(0, start) +
+        incoming +
+        oldDigits.slice(start + incoming.length)
+      ).slice(0, 8);
+      setTimecodeValueFromDigits(nextDigits, start + incoming.length);
+      invalidatePreview();
+    }
+
+    function deleteTimecodeDigit(backspace) {
+      const oldDigits = clampDigits(els.offsetInput.value).padEnd(8, "0").slice(0, 8);
+      const index = digitIndexFromCaret(els.offsetInput.selectionStart ?? 0);
+      const target = backspace ? Math.max(0, index - 1) : index;
+      const nextDigits = oldDigits.slice(0, target) + "0" + oldDigits.slice(target + 1);
+      setTimecodeValueFromDigits(nextDigits, target);
+      invalidatePreview();
+    }
+
+    function toggleOffsetSign() {
+      const next = offsetSign() < 0n ? "1" : "-1";
+      els.offsetSignBtn.dataset.sign = next;
+      els.offsetSignBtn.textContent = next === "-1" ? "-" : "+";
+      els.offsetSignBtn.title = next === "-1" ? "当前为减偏移，点击切换为加" : "当前为加偏移，点击切换为减";
+      els.offsetSignBtn.setAttribute("aria-label", next === "-1" ? "当前为减偏移" : "当前为加偏移");
+      invalidatePreview();
+    }
+
+    function samplesForRate(offset, sampleRate) {
+      const samples = mulFrac(offset.seconds, frac(BigInt(sampleRate)));
+      if (samples.d !== 1n) throw new Error(`${sampleRate} Hz 下偏移不是整数采样：${samples.n}/${samples.d}`);
+      return samples.n;
+    }
+
+    function ascii(view, pos, len) {
+      let out = "";
+      for (let i = 0; i < len; i++) out += String.fromCharCode(view.getUint8(pos + i));
+      return out;
+    }
+
+    async function readDataView(file, start, length) {
+      const blob = file.slice(start, start + length);
+      return new DataView(await blob.arrayBuffer());
+    }
+
+    async function scanWave(fileHandle) {
+      const file = await fileHandle.getFile();
+      const header = await readDataView(file, 0, Math.min(file.size, 12));
+      const name = file.name;
+      if (header.byteLength < 12 || ascii(header, 0, 4) !== "RIFF" || ascii(header, 8, 4) !== "WAVE") {
+        throw new Error(`${name}: 不是 RIFF/WAVE 文件`);
+      }
+
+      const riffSize = header.getUint32(4, LITTLE);
+      let pos = 12;
+      let sampleRate = null;
+      let channels = null;
+      let bitsPerSample = null;
+      let blockAlign = null;
+      let timeReferenceOffset = null;
+      let oldTimeReference = null;
+      let dataSize = null;
+
+      while (pos + 8 <= Math.min(file.size, riffSize + 8)) {
+        const chunkHeader = await readDataView(file, pos, 8);
+        if (chunkHeader.byteLength < 8) throw new Error(`${name}: chunk header 截断`);
+        const chunkId = ascii(chunkHeader, 0, 4);
+        const chunkSize = chunkHeader.getUint32(4, LITTLE);
+        const chunkStart = pos + 8;
+
+        if (chunkId === "fmt ") {
+          if (chunkSize < 16) throw new Error(`${name}: fmt chunk 过短`);
+          const fmt = await readDataView(file, chunkStart, Math.min(chunkSize, 40));
+          channels = fmt.getUint16(2, LITTLE);
+          sampleRate = fmt.getUint32(4, LITTLE);
+          blockAlign = fmt.getUint16(12, LITTLE);
+          bitsPerSample = fmt.getUint16(14, LITTLE);
+        } else if (chunkId === "bext") {
+          if (chunkSize < 346) throw new Error(`${name}: bext chunk 过短`);
+          timeReferenceOffset = chunkStart + 338;
+          const timeReference = await readDataView(file, timeReferenceOffset, 8);
+          oldTimeReference = timeReference.getBigUint64(0, LITTLE);
+        } else if (chunkId === "data") {
+          dataSize = chunkSize;
+          if (sampleRate !== null && oldTimeReference !== null) break;
+        }
+
+        pos = chunkStart + chunkSize + (chunkSize & 1);
+      }
+
+      if (sampleRate === null || blockAlign === null) throw new Error(`${name}: 缺少 fmt chunk`);
+      if (oldTimeReference === null || timeReferenceOffset === null) throw new Error(`${name}: 缺少 BWF bext TimeReference`);
+      if (dataSize === null) throw new Error(`${name}: 缺少 data chunk`);
+      if (dataSize % blockAlign !== 0) throw new Error(`${name}: data chunk 未按 block align 对齐`);
+
+      return {
+        fileHandle,
+        file,
+        name,
+        sampleRate,
+        channels,
+        bitsPerSample,
+        blockAlign,
+        timeReferenceOffset,
+        oldTimeReference,
+        durationSamples: BigInt(dataSize / blockAlign),
+      };
+    }
+
+    function samplesToTimecode(samples, sampleRate, fps) {
+      const totalFrames = mulFrac(frac(samples, BigInt(sampleRate)), fps);
+      const whole = floorFrac(totalFrames);
+      const sub = frac(totalFrames.n - whole * totalFrames.d, totalFrames.d);
+      const fpsInt = BigInt(Math.round(Number(fps.n) / Number(fps.d)));
+      const frame = whole % fpsInt;
+      const totalSeconds = whole / fpsInt;
+      const ss = totalSeconds % 60n;
+      const mm = (totalSeconds / 60n) % 60n;
+      const hh = (totalSeconds / 3600n) % 24n;
+      const base = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}:${String(frame).padStart(2, "0")}`;
+      return sub.n === 0n ? base : `${base} + ${sub.n}/${sub.d}fr`;
+    }
+
+    function formatDuration(samples, sampleRate) {
+      const seconds = Number(samples) / sampleRate;
+      return `${seconds.toFixed(3)}s`;
+    }
+
+    function defaultDisplayFps() {
+      return parseFps(els.fpsInput.value);
+    }
+
+    function toCsvValue(value) {
+      const text = String(value);
+      return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    function manifestCsv() {
+      const headers = [
+        "file", "sample_rate", "channels", "bits_per_sample", "time_reference_offset_byte",
+        "offset_tc", "offset_frames", "offset_samples", "old_time_reference",
+        "new_time_reference", "duration_samples", "old_start_tc", "new_start_tc",
+        "old_end_tc", "new_end_tc"
+      ];
+      const rows = previews.map(p => ({
+        file: p.name,
+        sample_rate: p.sampleRate,
+        channels: p.channels,
+        bits_per_sample: p.bitsPerSample,
+        time_reference_offset_byte: p.timeReferenceOffset,
+        offset_tc: p.offset.label,
+        offset_frames: p.offset.frames,
+        offset_samples: p.sampleOffset,
+        old_time_reference: p.oldTimeReference,
+        new_time_reference: p.newTimeReference,
+        duration_samples: p.durationSamples,
+        old_start_tc: p.oldStartTc,
+        new_start_tc: p.newStartTc,
+        old_end_tc: p.oldEndTc,
+        new_end_tc: p.newEndTc,
+      }));
+      return [headers.join(","), ...rows.map(row => headers.map(h => toCsvValue(row[h])).join(","))].join("\n");
+    }
+
+    function renderRows() {
+      els.previewBody.textContent = "";
+      const sampleRates = new Set();
+      const sampleOffsets = new Set();
+      const fps = defaultDisplayFps();
+      const previewByName = new Map(previews.map(preview => [preview.name, preview]));
+
+      for (const record of records) {
+        const preview = previewByName.get(record.name);
+        sampleRates.add(record.sampleRate);
+        if (preview) sampleOffsets.add(preview.sampleOffset.toString());
+        const row = document.createElement("tr");
+        const cells = [
+          record.name,
+          record.sampleRate,
+          record.channels,
+          record.bitsPerSample,
+          samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
+          preview ? preview.newStartTc : "待预览",
+          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
+          preview ? preview.newEndTc : "待预览",
+          record.oldTimeReference,
+          preview ? preview.newTimeReference : "待预览",
+          formatDuration(record.durationSamples, record.sampleRate),
+        ];
+        cells.forEach((cell, index) => {
+          const td = document.createElement("td");
+          td.textContent = String(cell);
+          if ([4, 5, 6, 7, 8, 9].includes(index)) td.classList.add("mono");
+          if (!preview && [5, 7, 9].includes(index)) td.classList.add("pending");
+          if (preview && [5, 7, 9].includes(index)) td.classList.add("new-value");
+          row.appendChild(td);
+        });
+        const result = document.createElement("td");
+        const pill = document.createElement("span");
+        pill.className = preview ? "pill ok" : "pill idle";
+        pill.textContent = preview ? "Ready" : "Original";
+        result.appendChild(pill);
+        row.appendChild(result);
+        els.previewBody.appendChild(row);
+      }
+
+      els.previewTable.hidden = records.length === 0;
+      els.emptyState.hidden = records.length > 0;
+      els.fileCount.textContent = records.length;
+      els.offsetFrames.textContent = activeOffset ? activeOffset.frames.toString() : "-";
+      els.offsetSamples.textContent = sampleOffsets.size ? Array.from(sampleOffsets).join(", ") : "-";
+      els.sampleRates.textContent = sampleRates.size ? Array.from(sampleRates).join(", ") : "-";
+      els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
+    }
+
+    async function chooseFolder() {
+      if (!("showDirectoryPicker" in window)) {
+        throw new Error("当前浏览器不支持文件夹写入 API");
+      }
+      directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      els.folderName.textContent = directoryHandle.name;
+      await scanOriginals();
+    }
+
+    async function scanOriginals() {
+      if (!directoryHandle) throw new Error("请先选择文件夹");
+      records = [];
+      previews = [];
+      activeOffset = null;
+      els.applyBtn.disabled = true;
+      els.previewBtn.disabled = true;
+      renderRows();
+      setState("扫描中", "warn");
+      els.statusLine.textContent = "Reading original metadata...";
+
+      const handles = await collectWaveHandles();
+      if (!handles.length) throw new Error("文件夹里没有 WAV 文件");
+      for (const handle of handles) {
+        records.push(await scanWave(handle));
+      }
+
+      els.previewBtn.disabled = false;
+      setState("已载入");
+      els.statusLine.textContent = `已载入 ${records.length} 个 WAV；输入偏移后点击预览`;
+      renderRows();
+      log(`Loaded originals: ${records.length} files from ${directoryHandle.name}`);
+    }
+
+    async function collectWaveHandles() {
+      if (!directoryHandle) throw new Error("请先选择文件夹");
+      const handles = [];
+      for await (const entry of directoryHandle.values()) {
+        if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) handles.push(entry);
+      }
+      handles.sort((a, b) => a.name.localeCompare(b.name));
+      return handles;
+    }
+
+    async function runPreview() {
+      els.applyBtn.disabled = true;
+      previews = [];
+      activeOffset = null;
+      renderRows();
+      setState("预览中", "warn");
+      els.statusLine.textContent = "Calculating shifted timecode...";
+
+      const fps = parseFps(els.fpsInput.value);
+      const offset = parseOffset(els.offsetInput.value, fps);
+      if (!records.length) throw new Error("请先选择文件夹并载入原始信息");
+
+      for (const record of records) {
+        const sampleOffset = samplesForRate(offset, record.sampleRate);
+        const newTimeReference = record.oldTimeReference + sampleOffset;
+        if (newTimeReference < 0n) {
+          throw new Error(`${record.name}: 减去该偏移后 TimeReference 会小于 0`);
+        }
+        const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps);
+        const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps);
+        const oldEndTc = samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps);
+        const newEndTc = samplesToTimecode(newTimeReference + record.durationSamples, record.sampleRate, fps);
+        previews.push({
+          ...record,
+          offset,
+          sampleOffset,
+          newTimeReference,
+          oldStartTc,
+          newStartTc,
+          oldEndTc,
+          newEndTc,
+          duration: formatDuration(record.durationSamples, record.sampleRate),
+        });
+      }
+
+      activeOffset = offset;
+      renderRows();
+      els.applyBtn.disabled = false;
+      setState("可写入");
+      els.statusLine.textContent = `${previews.length} 个文件已生成修改预览`;
+      log(`Preview OK: ${previews.length} files, offset ${offset.label}, ${offset.frames} frames`);
+    }
+
+    async function writeManifestToFolder() {
+      const now = new Date();
+      const stamp = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        "_",
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0"),
+        String(now.getSeconds()).padStart(2, "0")
+      ].join("");
+      const handle = await directoryHandle.getFileHandle(`timecode_fix_manifest_${stamp}.csv`, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([manifestCsv()], { type: "text/csv;charset=utf-8" }));
+      await writable.close();
+      return handle.name;
+    }
+
+    async function applyChanges() {
+      if (!previews.length) throw new Error("没有可写入的预览");
+      const ok = window.confirm(`写入 ${previews.length} 个 WAV 的 BWF TimeReference？`);
+      if (!ok) return;
+
+      setState("写入中", "warn");
+      els.applyBtn.disabled = true;
+      els.statusLine.textContent = "Writing...";
+
+      for (const preview of previews) {
+        const patch = new ArrayBuffer(8);
+        new DataView(patch).setBigUint64(0, preview.newTimeReference, LITTLE);
+        const writable = await preview.fileHandle.createWritable({ keepExistingData: true });
+        await writable.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
+        await writable.close();
+      }
+
+      for (const preview of previews) {
+        const fresh = await scanWave(preview.fileHandle);
+        if (fresh.oldTimeReference !== preview.newTimeReference) {
+          throw new Error(`${preview.name}: 校验失败`);
+        }
+      }
+
+      const manifestName = await writeManifestToFolder();
+      for (const pill of document.querySelectorAll(".pill")) {
+        pill.className = "pill ok";
+        pill.textContent = "Written";
+      }
+      setState("完成");
+      els.statusLine.textContent = manifestName;
+      log(`Write OK: ${previews.length} files; ${manifestName}`);
+    }
+
+    function invalidatePreview() {
+      if (!records.length || !previews.length) {
+        renderRows();
+        return;
+      }
+      previews = [];
+      activeOffset = null;
+      els.applyBtn.disabled = true;
+      setState("需重新预览", "warn");
+      els.statusLine.textContent = "偏移或帧率已改变，请重新点击预览";
+      renderRows();
+    }
+
+    async function guarded(fn) {
+      try {
+        await fn();
+      } catch (error) {
+        setState("错误", "err");
+        els.statusLine.textContent = error.message;
+        log(`ERROR: ${error.message}`);
+      }
+    }
+
+    let deferredInstallPrompt = null;
+
+    function setupPwa() {
+      window.addEventListener("beforeinstallprompt", event => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        els.installBtn.hidden = false;
+      });
+
+      window.addEventListener("appinstalled", () => {
+        deferredInstallPrompt = null;
+        els.installBtn.hidden = true;
+        log("PWA installed.");
+      });
+
+      els.installBtn.addEventListener("click", async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        els.installBtn.hidden = true;
+      });
+
+      if (!("serviceWorker" in navigator)) {
+        log("PWA: service worker is not supported in this browser.");
+        return;
+      }
+
+      if (!["http:", "https:"].includes(window.location.protocol)) {
+        log("PWA: open through http://127.0.0.1 or HTTPS to enable install/offline mode.");
+        return;
+      }
+
+      navigator.serviceWorker.register("./bwf-timecode-sw.js")
+        .then(() => log("PWA: offline cache ready."))
+        .catch(error => log(`PWA ERROR: ${error.message}`));
+    }
+
+    els.chooseBtn.addEventListener("click", () => guarded(chooseFolder));
+    els.previewBtn.addEventListener("click", () => guarded(runPreview));
+    els.applyBtn.addEventListener("click", () => guarded(applyChanges));
+    els.offsetSignBtn.addEventListener("click", toggleOffsetSign);
+    els.tcUpBtn.addEventListener("click", () => {
+      try { stepTimecodeByFrames(1); } catch (error) { log(`ERROR: ${error.message}`); }
+    });
+    els.tcDownBtn.addEventListener("click", () => {
+      try { stepTimecodeByFrames(-1); } catch (error) { log(`ERROR: ${error.message}`); }
+    });
+    els.offsetInput.addEventListener("focus", () => els.offsetInput.select());
+    els.offsetInput.addEventListener("input", () => normalizeTimecodeInput());
+    els.offsetInput.addEventListener("paste", event => {
+      event.preventDefault();
+      insertTimecodeDigits(event.clipboardData.getData("text"));
+    });
+    els.offsetInput.addEventListener("blur", () => normalizeTimecodeInput());
+    els.offsetInput.addEventListener("keydown", event => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      try {
+        if (/^\d$/.test(event.key)) {
+          event.preventDefault();
+          insertTimecodeDigits(event.key);
+          return;
+        }
+        if (event.key === "Backspace" || event.key === "Delete") {
+          event.preventDefault();
+          deleteTimecodeDigit(event.key === "Backspace");
+          return;
+        }
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          stepTimecodeAtCaret(event.key === "ArrowUp" ? 1 : -1);
+        }
+      } catch (error) {
+        log(`ERROR: ${error.message}`);
+      }
+    });
+    els.fpsInput.addEventListener("change", invalidatePreview);
+
+    if (!("showDirectoryPicker" in window)) {
+      setState("浏览器不支持", "warn");
+      els.statusLine.textContent = "Chrome / Edge recommended";
+      els.chooseBtn.disabled = true;
+      els.previewBtn.disabled = true;
+    }
+
+    setupPwa();
+  </script>
+</body>
+</html>
