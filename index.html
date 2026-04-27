@@ -160,9 +160,10 @@
       border-bottom: 1px solid var(--line);
       padding: 16px 28px;
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) auto minmax(72px, auto) minmax(72px, auto);
+      grid-template-columns: minmax(220px, 420px) 122px minmax(86px, auto) minmax(86px, auto);
       gap: 12px;
       align-items: end;
+      justify-content: start;
       backdrop-filter: blur(16px);
     }
 
@@ -202,6 +203,7 @@
       border-radius: 8px;
       overflow: hidden;
       background: #fff;
+      height: 40px;
     }
 
     .timecode-control:focus-within {
@@ -225,6 +227,7 @@
 
     .calc-expression .timecode-control {
       grid-template-columns: minmax(0, 1fr) 30px;
+      height: 46px;
     }
 
     .calculator .timecode-control input {
@@ -278,6 +281,7 @@
       grid-template-rows: 1fr 1fr;
       border-left: 1px solid var(--line);
       background: #f8fafc;
+      min-height: 0;
     }
 
     .tc-step {
@@ -371,9 +375,10 @@
 
     .calc-expression {
       display: grid;
-      grid-template-columns: minmax(180px, 1fr) 52px minmax(180px, 1fr) auto minmax(230px, 1.15fr) auto;
+      grid-template-columns: minmax(260px, 520px) 52px minmax(260px, 520px) auto minmax(220px, 420px) auto;
       gap: 12px;
       align-items: end;
+      justify-content: start;
     }
 
     .calculator label {
@@ -459,6 +464,14 @@
 
     .calculator button {
       height: 46px;
+    }
+
+    .calculator .tc-step {
+      width: 30px;
+      height: 23px;
+      min-height: 0;
+      padding: 0;
+      font-size: 10px;
     }
 
     .workspace {
