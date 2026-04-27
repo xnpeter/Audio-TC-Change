@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v1";
+const CACHE_NAME = "bwf-timecode-batch-v2";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -26,11 +26,32 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
+
+  const requestUrl = new URL(event.request.url);
+  const sameOrigin = requestUrl.origin === self.location.origin;
+  const isPageRequest = event.request.mode === "navigate" ||
+    (sameOrigin && (requestUrl.pathname.endsWith("/") || requestUrl.pathname.endsWith("/index.html")));
+
+  if (isPageRequest) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        const shouldCache = response.ok && new URL(event.request.url).origin === self.location.origin;
+        const shouldCache = response.ok && sameOrigin;
         if (shouldCache) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
