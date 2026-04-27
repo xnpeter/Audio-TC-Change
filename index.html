@@ -160,7 +160,7 @@
       border-bottom: 1px solid var(--line);
       padding: 16px 28px;
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) auto minmax(190px, 230px) minmax(132px, 160px) auto auto;
+      grid-template-columns: minmax(190px, 230px) minmax(132px, 160px) auto auto;
       gap: 12px;
       align-items: end;
       backdrop-filter: blur(16px);
@@ -188,10 +188,6 @@
     input:focus, select:focus, button:focus {
       outline: 3px solid rgba(15, 118, 110, 0.18);
       outline-offset: 1px;
-    }
-
-    .folder-field {
-      min-width: 0;
     }
 
     .timecode-control {
@@ -300,20 +296,6 @@
     .tc-step:hover {
       transform: none;
       background: #edf3f7;
-    }
-
-    .folder-name {
-      height: 40px;
-      border: 1px solid var(--line);
-      background: var(--soft);
-      color: var(--ink);
-      border-radius: 8px;
-      padding: 10px 11px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      font-size: 13px;
-      font-weight: 700;
     }
 
     main {
@@ -568,11 +550,29 @@
 
     .empty {
       height: 260px;
-      display: grid;
-      place-items: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 17px;
+      font-weight: 650;
       background: linear-gradient(180deg, #fff, #fbfcfd);
+      user-select: none;
+      cursor: default;
+    }
+
+    .empty::before {
+      content: "↓";
+      width: 56px;
+      height: 56px;
+      border: 3px solid var(--line);
+      border-radius: 50%;
+      font-size: 28px;
+      line-height: 50px;
+      text-align: center;
+      color: var(--muted);
     }
 
     .log {
@@ -608,8 +608,6 @@
       header { align-items: flex-start; flex-direction: column; }
       .header-meta { justify-content: flex-start; }
       .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
-      .folder-field { grid-column: auto; }
-      #chooseBtn { grid-column: auto; }
       .stats { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
       .calc-expression { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr); }
       .calc-equals, .calc-result, .calc-actions { grid-column: 1 / -1; }
@@ -619,7 +617,6 @@
     @media (max-width: 620px) {
       header, .toolbar, main { padding-left: 14px; padding-right: 14px; }
       .toolbar { grid-template-columns: 1fr; }
-      .folder-field, #chooseBtn { grid-column: auto; }
       .stats { grid-template-columns: 1fr; }
       .calc-expression { grid-template-columns: 1fr; }
       .calc-operator { width: 100%; }
@@ -684,12 +681,6 @@
     </section>
 
     <section class="toolbar" aria-label="controls">
-      <label class="folder-field">
-        文件夹
-        <div id="folderName" class="folder-name">未选择</div>
-      </label>
-      <button id="chooseBtn" title="选择文件夹">选择文件夹</button>
-
       <label>
         偏移时间码
         <div class="timecode-control">
@@ -740,7 +731,7 @@
       <section class="workspace">
         <div class="table-head">
           <div class="table-title">音频文件 <span id="phasePill" class="phase">原始信息</span></div>
-          <div id="statusLine" class="status">选择文件夹后显示原始信息</div>
+          <div id="statusLine" class="status">拖入音频文件后显示原始信息</div>
         </div>
         <div class="table-wrap">
           <table id="previewTable" hidden>
@@ -762,7 +753,7 @@
             </thead>
             <tbody id="previewBody"></tbody>
           </table>
-          <div id="emptyState" class="empty">选择文件夹后显示 WAV 原始时间码信息</div>
+          <div id="emptyState" class="empty">拖入音频文件</div>
         </div>
         <div id="log" class="log">Ready.</div>
       </section>
@@ -774,7 +765,6 @@
     const WAV_SUFFIX = /\.(wav|wave)$/i;
 
     const els = {
-      folderName: document.getElementById("folderName"),
       offsetSignBtn: document.getElementById("offsetSignBtn"),
       offsetInput: document.getElementById("offsetInput"),
       tcUpBtn: document.getElementById("tcUpBtn"),
@@ -790,7 +780,6 @@
       calcResult: document.getElementById("calcResult"),
       calcBtn: document.getElementById("calcBtn"),
       useCalcBtn: document.getElementById("useCalcBtn"),
-      chooseBtn: document.getElementById("chooseBtn"),
       previewBtn: document.getElementById("previewBtn"),
       applyBtn: document.getElementById("applyBtn"),
       fileCount: document.getElementById("fileCount"),
@@ -1309,49 +1298,6 @@
       els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
     }
 
-    async function chooseFolder() {
-      if (!("showDirectoryPicker" in window)) {
-        throw new Error("当前浏览器不支持文件夹写入 API");
-      }
-      directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-      els.folderName.textContent = directoryHandle.name;
-      await scanOriginals();
-    }
-
-    async function scanOriginals() {
-      if (!directoryHandle) throw new Error("请先选择文件夹");
-      records = [];
-      previews = [];
-      activeOffset = null;
-      els.applyBtn.disabled = true;
-      els.previewBtn.disabled = true;
-      renderRows();
-      setState("扫描中", "warn");
-      els.statusLine.textContent = "Reading original metadata...";
-
-      const handles = await collectWaveHandles();
-      if (!handles.length) throw new Error("文件夹里没有 WAV 文件");
-      for (const handle of handles) {
-        records.push(await scanWave(handle));
-      }
-
-      els.previewBtn.disabled = false;
-      setState("已载入");
-      els.statusLine.textContent = `已载入 ${records.length} 个 WAV；输入偏移后点击预览`;
-      renderRows();
-      log(`Loaded originals: ${records.length} files from ${directoryHandle.name}`);
-    }
-
-    async function collectWaveHandles() {
-      if (!directoryHandle) throw new Error("请先选择文件夹");
-      const handles = [];
-      for await (const entry of directoryHandle.values()) {
-        if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) handles.push(entry);
-      }
-      handles.sort((a, b) => a.name.localeCompare(b.name));
-      return handles;
-    }
-
     async function runPreview() {
       els.applyBtn.disabled = true;
       previews = [];
@@ -1362,7 +1308,7 @@
 
       const fps = parseFps(els.fpsInput.value);
       const offset = parseOffset(els.offsetInput.value, fps);
-      if (!records.length) throw new Error("请先选择文件夹并载入原始信息");
+      if (!records.length) throw new Error("请拖入文件夹或音频文件");
 
       for (const record of records) {
         const sampleOffset = samplesForRate(offset, record.sampleRate);
@@ -1508,7 +1454,6 @@
         .catch(error => log(`PWA ERROR: ${error.message}`));
     }
 
-    els.chooseBtn.addEventListener("click", () => guarded(chooseFolder));
     els.previewBtn.addEventListener("click", () => guarded(runPreview));
     els.applyBtn.addEventListener("click", () => guarded(applyChanges));
     els.calcBtn.addEventListener("click", () => guarded(calculateTimecodeDifference));
@@ -1609,14 +1554,12 @@
     if (!("showDirectoryPicker" in window)) {
       setState("浏览器不支持", "warn");
       els.statusLine.textContent = "Chrome / Edge recommended";
-      els.chooseBtn.disabled = true;
       els.previewBtn.disabled = true;
     }
 
     async function addHandle(handle) {
       if (handle.kind === "directory") {
         directoryHandle = handle;
-        els.folderName.textContent = handle.name;
         const entries = [];
         for await (const entry of handle.values()) {
           if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) entries.push(entry);
