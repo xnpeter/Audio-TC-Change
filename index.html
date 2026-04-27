@@ -233,6 +233,16 @@
       background: transparent;
     }
 
+    .app.drag-over::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      border: 4px dashed var(--accent);
+      background: rgba(15, 118, 110, 0.04);
+      pointer-events: none;
+      z-index: 999;
+    }
+
     .sign-toggle {
       width: 38px;
       height: 40px;
@@ -1603,8 +1613,67 @@
       els.previewBtn.disabled = true;
     }
 
+    async function addHandle(handle) {
+      if (handle.kind === "directory") {
+        directoryHandle = handle;
+        els.folderName.textContent = handle.name;
+        const entries = [];
+        for await (const entry of handle.values()) {
+          if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) entries.push(entry);
+        }
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+          records.push(await scanWave(entry));
+        }
+      } else if (handle.kind === "file" && WAV_SUFFIX.test(handle.name)) {
+        records.push(await scanWave(handle));
+      }
+    }
+
+    async function handleDropItems(items) {
+      let count = records.length;
+      for (const item of items) {
+        try {
+          if (item.getAsFileSystemHandle) {
+            const handle = await item.getAsFileSystemHandle();
+            await addHandle(handle);
+          }
+        } catch (error) {
+          log(`ERROR: ${error.message}`);
+        }
+      }
+      if (records.length > count) {
+        els.previewBtn.disabled = false;
+        setState("已载入");
+        els.statusLine.textContent = `已载入 ${records.length} 个 WAV；输入偏移后点击预览`;
+        renderRows();
+        log(`Dropped ${records.length - count} WAV file(s)`);
+      }
+    }
+
+    function setupDragAndDrop() {
+      const app = document.querySelector(".app");
+      app.addEventListener("dragover", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        app.classList.add("drag-over");
+      });
+      app.addEventListener("dragleave", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        app.classList.remove("drag-over");
+      });
+      app.addEventListener("drop", async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        app.classList.remove("drag-over");
+        await guarded(() => handleDropItems(event.dataTransfer.items));
+      });
+    }
+
     els.calcResult.textContent = "00:00:00:00";
     setupPwa();
+    setupDragAndDrop();
   </script>
 </body>
 </html>
