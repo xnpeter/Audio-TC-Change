@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BWF Timecode Batch</title>
+  <title>Audio TC Change</title>
   <meta name="theme-color" content="#202a36">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="BWF Timecode">
+  <meta name="apple-mobile-web-app-title" content="Audio TC Change">
   <link rel="manifest" href="./bwf-timecode.webmanifest">
   <link rel="icon" href="./bwf-timecode-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./bwf-timecode-icon-192.png">
@@ -766,13 +766,45 @@
       .table-head { align-items: flex-start; flex-direction: column; }
       .status { text-align: left; }
     }
+    footer {
+      padding: 16px 24px;
+      font-size: 13px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+    }
+    footer .footer-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    footer .github-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .2s;
+    }
+    footer .github-link:hover {
+      color: var(--accent);
+    }
+    footer .github-link svg {
+      width: 16px;
+      height: 16px;
+    }
+    footer .copyright {
+      font-size: 12px;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
   <div class="app">
     <header>
       <div class="title-block">
-        <h1>BWF Timecode Batch</h1>
+        <h1>Audio TC Change</h1>
         <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码</div>
       </div>
       <div class="header-meta">
@@ -904,6 +936,15 @@
         <div id="log" class="log">Ready.</div>
       </section>
     </main>
+    <footer>
+      <div class="footer-inner">
+        <a class="github-link" href="https://github.com/xnpeter/AudioTCChange" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          <span>GitHub</span>
+        </a>
+        <p class="copyright">Audio TC Change © 2026 | by 诺米</p>
+      </div>
+    </footer>
   </div>
 
   <script>

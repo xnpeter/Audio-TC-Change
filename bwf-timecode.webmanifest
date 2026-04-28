@@ -1,6 +1,6 @@
 {
-  "name": "BWF Timecode Batch",
-  "short_name": "BWF Timecode",
+  "name": "Audio TC Change",
+  "short_name": "Audio TC",
   "description": "Batch view and update BWF WAV time reference metadata locally.",
   "start_url": "./",
   "scope": "./",
