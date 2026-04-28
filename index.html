@@ -28,6 +28,7 @@
       --ok: #087443;
       --shadow: 0 18px 50px rgba(24, 32, 42, 0.12);
       --timecode-width: 520px;
+      --page-x: 28px;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -83,7 +84,7 @@
     .app {
       min-height: 100vh;
       display: grid;
-      grid-template-rows: auto auto auto 1fr;
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     }
 
     header {
@@ -157,15 +158,19 @@
     }
 
     .toolbar {
-      background: rgba(255, 255, 255, 0.92);
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      border-right: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
+      border-radius: 0 0 12px 12px;
+      margin: 0 var(--page-x);
       padding: 16px;
       display: grid;
-      grid-template-columns: var(--timecode-width) 122px minmax(86px, auto) minmax(86px, auto);
+      grid-template-columns: var(--timecode-width) 122px minmax(86px, auto) minmax(86px, auto) minmax(86px, auto);
       gap: 12px;
       align-items: end;
       justify-content: start;
-      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
     }
 
     .toolbar > button {
@@ -361,14 +366,16 @@
     .sign-toggle {
       width: 52px;
       height: 46px;
-      padding: 0;
+      padding: 0 0 3px;
       border: 0;
       border-right: 1px solid var(--line);
       border-radius: 0;
+      align-items: center;
       justify-content: center;
       background: var(--accent-soft);
       color: var(--accent-strong);
       font-size: 24px;
+      line-height: 1;
       font-weight: 850;
       box-shadow: none;
       min-width: 0;
@@ -421,7 +428,7 @@
     }
 
     main {
-      padding: 20px 28px 28px;
+      padding: 20px var(--page-x) 18px;
       display: grid;
       gap: 16px;
       grid-template-rows: auto auto 1fr;
@@ -463,8 +470,10 @@
       background: var(--panel);
       color: var(--ink);
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-bottom: 0;
+      border-radius: 12px 12px 0 0;
       padding: 16px;
+      margin: 40px var(--page-x) 0;
       display: grid;
       gap: 14px;
       box-shadow: var(--shadow);
@@ -520,13 +529,15 @@
     .calc-operator {
       width: 52px;
       height: 46px;
-      padding: 0;
+      padding: 0 0 3px;
+      align-items: center;
       justify-content: center;
       border-color: var(--line);
       background: var(--accent-soft);
       color: var(--accent-strong);
       border-radius: 6px;
       font-size: 24px;
+      line-height: 1;
       font-weight: 850;
       box-shadow: none;
     }
@@ -640,7 +651,7 @@
 
     .table-wrap {
       overflow: auto;
-      min-height: 330px;
+      min-height: 260px;
       background: #fff;
     }
 
@@ -688,7 +699,7 @@
     }
 
     .empty {
-      height: 260px;
+      height: 210px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -754,8 +765,7 @@
     }
 
     @media (max-width: 620px) {
-      header, main { padding-left: 14px; padding-right: 14px; }
-      .toolbar { padding-left: 14px; padding-right: 14px; }
+      :root { --page-x: 14px; }
       .toolbar { grid-template-columns: 1fr; }
       .stats { grid-template-columns: 1fr; }
       .calc-expression { grid-template-columns: 1fr; }
@@ -767,17 +777,15 @@
       .status { text-align: left; }
     }
     footer {
-      padding: 16px 24px;
+      padding: 12px 24px;
       font-size: 13px;
       color: var(--muted);
-      border-top: 1px solid var(--line);
-      background: var(--panel);
     }
     footer .footer-inner {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
     footer .github-link {
       display: inline-flex;
@@ -797,6 +805,124 @@
     footer .copyright {
       font-size: 12px;
       color: var(--muted);
+    }
+    #progressOverlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    #progressOverlay.show {
+      display: flex;
+    }
+    #progressBox {
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 32px 40px;
+      min-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      text-align: center;
+    }
+    #progressBox .progress-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    #progressBox .progress-file {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #progressBox .progress-track {
+      width: 100%;
+      height: 8px;
+      background: var(--line);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    #progressBox .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width .3s ease;
+    }
+    #progressBox .progress-pct {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    #confirmOverlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.42);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+      padding: 20px;
+    }
+    #confirmOverlay.show {
+      display: flex;
+    }
+    .confirm-dialog {
+      width: min(460px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 24px 70px rgba(0,0,0,.28);
+      padding: 24px;
+    }
+    .confirm-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+    .confirm-copy {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .confirm-copy strong {
+      color: var(--danger);
+      font-weight: 700;
+    }
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .confirm-actions button {
+      width: auto;
+    }
+    #toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 28px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.15);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ok);
+      opacity: 0;
+      transition: opacity .3s ease, transform .3s ease;
+      z-index: 1001;
+      pointer-events: none;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
   </style>
 </head>
@@ -829,7 +955,7 @@
             </div>
           </div>
         </label>
-        <button id="calcOpBtn" class="calc-operator" type="button" data-op="+" title="切换加/减" aria-label="切换加减">+</button>
+        <button id="calcOpBtn" class="calc-operator" type="button" data-op="-" title="切换加/减" aria-label="切换加减">−</button>
         <label>
           时间码 B
           <div class="timecode-control">
@@ -895,6 +1021,7 @@
 
       <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
       <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
+      <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
     </section>
 
     <main>
@@ -947,6 +1074,26 @@
     </footer>
   </div>
 
+  <div id="progressOverlay">
+    <div id="progressBox">
+      <div class="progress-label" id="progressLabel">正在写入…</div>
+      <div class="progress-file" id="progressFile"></div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-pct" id="progressPct">0%</div>
+    </div>
+  </div>
+  <div id="confirmOverlay" aria-hidden="true">
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmCopy">
+      <div class="confirm-title" id="confirmTitle">确认写入文件？</div>
+      <div class="confirm-copy" id="confirmCopy"></div>
+      <div class="confirm-actions">
+        <button id="confirmCancelBtn" type="button">取消</button>
+        <button id="confirmWriteBtn" class="danger" type="button">确认写入</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast">✅ 写入完成</div>
+
   <script>
     const LITTLE = true;
     const WAV_SUFFIX = /\.(wav|wave)$/i;
@@ -971,6 +1118,7 @@
       useCalcBtn: document.getElementById("useCalcBtn"),
       previewBtn: document.getElementById("previewBtn"),
       applyBtn: document.getElementById("applyBtn"),
+      undoBtn: document.getElementById("undoBtn"),
       fileCount: document.getElementById("fileCount"),
       offsetFrames: document.getElementById("offsetFrames"),
       offsetSamples: document.getElementById("offsetSamples"),
@@ -983,6 +1131,16 @@
       previewBody: document.getElementById("previewBody"),
       emptyState: document.getElementById("emptyState"),
       log: document.getElementById("log"),
+      toast: document.getElementById("toast"),
+      progressOverlay: document.getElementById("progressOverlay"),
+      progressLabel: document.getElementById("progressLabel"),
+      progressFill: document.getElementById("progressFill"),
+      progressPct: document.getElementById("progressPct"),
+      progressFile: document.getElementById("progressFile"),
+      confirmOverlay: document.getElementById("confirmOverlay"),
+      confirmCopy: document.getElementById("confirmCopy"),
+      confirmCancelBtn: document.getElementById("confirmCancelBtn"),
+      confirmWriteBtn: document.getElementById("confirmWriteBtn"),
     };
 
     let directoryHandle = null;
@@ -990,6 +1148,7 @@
     let previews = [];
     let activeOffset = null;
     let calculatorOffset = null;
+    let lastUndoBatch = null;
 
     function initCustomSelect(select, button, menu) {
       const field = select.closest("[data-select]");
@@ -1387,7 +1546,7 @@
     function toggleOffsetSign() {
       const next = offsetSign() < 0n ? "1" : "-1";
       els.offsetSignBtn.dataset.sign = next;
-      els.offsetSignBtn.textContent = next === "-1" ? "-" : "+";
+      els.offsetSignBtn.textContent = next === "-1" ? "−" : "+";
       els.offsetSignBtn.title = next === "-1" ? "当前为减偏移，点击切换为加" : "当前为加偏移，点击切换为减";
       els.offsetSignBtn.setAttribute("aria-label", next === "-1" ? "当前为减偏移" : "当前为加偏移");
       invalidatePreview();
@@ -1501,7 +1660,7 @@
     function toggleCalculatorOperator() {
       const next = els.calcOpBtn.dataset.op === "-" ? "+" : "-";
       els.calcOpBtn.dataset.op = next;
-      els.calcOpBtn.textContent = next;
+      els.calcOpBtn.textContent = next === "-" ? "−" : "+";
       calculatorOffset = null;
       els.useCalcBtn.disabled = true;
     }
@@ -1510,7 +1669,7 @@
       if (!calculatorOffset) calculateTimecodeDifference();
       const result = calculatorOffset;
       els.offsetSignBtn.dataset.sign = result.frames < 0n ? "-1" : "1";
-      els.offsetSignBtn.textContent = result.frames < 0n ? "-" : "+";
+      els.offsetSignBtn.textContent = result.frames < 0n ? "−" : "+";
       els.offsetSignBtn.title = result.frames < 0n ? "当前为减偏移，点击切换为加" : "当前为加偏移，点击切换为减";
       els.offsetSignBtn.setAttribute("aria-label", result.frames < 0n ? "当前为减偏移" : "当前为加偏移");
       els.offsetInput.value = result.tc;
@@ -1653,6 +1812,7 @@
     }
 
     async function writeManifestToFolder() {
+      if (!directoryHandle) return null;
       const now = new Date();
       const stamp = [
         now.getFullYear(),
@@ -1670,38 +1830,182 @@
       return handle.name;
     }
 
+    async function writeTimeReference(preview, value) {
+      const patch = new ArrayBuffer(8);
+      new DataView(patch).setBigUint64(0, value, LITTLE);
+      const writable = await preview.fileHandle.createWritable({ keepExistingData: true });
+      await writable.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
+      await writable.close();
+    }
+
+    async function refreshRecordsFromHandles() {
+      records = await Promise.all(records.map(record => scanWave(record.fileHandle)));
+    }
+
+    function updateWriteProgress(label, fileText, done, total) {
+      const ratio = total ? done / total : 0;
+      const percent = Math.round(Math.min(1, Math.max(0, ratio)) * 100);
+      els.progressLabel.textContent = label;
+      els.progressFile.textContent = fileText;
+      els.progressFill.style.width = `${percent}%`;
+      els.progressPct.textContent = `${percent}%`;
+    }
+
+    function confirmWriteChanges(count) {
+      return new Promise(resolve => {
+        const previousFocus = document.activeElement;
+        let settled = false;
+
+        function close(result) {
+          if (settled) return;
+          settled = true;
+          els.confirmOverlay.classList.remove("show");
+          els.confirmOverlay.setAttribute("aria-hidden", "true");
+          els.confirmCancelBtn.removeEventListener("click", onCancel);
+          els.confirmWriteBtn.removeEventListener("click", onConfirm);
+          document.removeEventListener("keydown", onKeydown);
+          previousFocus?.focus?.();
+          resolve(result);
+        }
+
+        function onCancel() {
+          close(false);
+        }
+
+        function onConfirm() {
+          close(true);
+        }
+
+        function onKeydown(event) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            close(false);
+          }
+        }
+
+        els.confirmCopy.innerHTML = [
+          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
+          "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
+        ].join("<br>");
+        els.confirmOverlay.classList.add("show");
+        els.confirmOverlay.setAttribute("aria-hidden", "false");
+        els.confirmCancelBtn.addEventListener("click", onCancel);
+        els.confirmWriteBtn.addEventListener("click", onConfirm);
+        document.addEventListener("keydown", onKeydown);
+        requestAnimationFrame(() => els.confirmCancelBtn.focus());
+      });
+    }
+
     async function applyChanges() {
       if (!previews.length) throw new Error("没有可写入的预览");
-      const ok = window.confirm(`写入 ${previews.length} 个 WAV 的 BWF TimeReference？`);
+      const ok = await confirmWriteChanges(previews.length);
       if (!ok) return;
 
       setState("写入中", "warn");
       els.applyBtn.disabled = true;
+      els.undoBtn.disabled = true;
       els.statusLine.textContent = "Writing...";
+      const undoBatch = previews.map(preview => ({
+        fileHandle: preview.fileHandle,
+        name: preview.name,
+        timeReferenceOffset: preview.timeReferenceOffset,
+        oldTimeReference: preview.oldTimeReference,
+      }));
 
-      for (const preview of previews) {
-        const patch = new ArrayBuffer(8);
-        new DataView(patch).setBigUint64(0, preview.newTimeReference, LITTLE);
-        const writable = await preview.fileHandle.createWritable({ keepExistingData: true });
-        await writable.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
-        await writable.close();
-      }
+      updateWriteProgress("正在写入…", "", 0, previews.length);
+      els.progressOverlay.classList.add("show");
 
-      for (const preview of previews) {
-        const fresh = await scanWave(preview.fileHandle);
-        if (fresh.oldTimeReference !== preview.newTimeReference) {
-          throw new Error(`${preview.name}: 校验失败`);
+      try {
+        for (let i = 0; i < previews.length; i++) {
+          const preview = previews[i];
+          updateWriteProgress("正在写入…", preview.name, i, previews.length);
+          await writeTimeReference(preview, preview.newTimeReference);
+          updateWriteProgress("正在写入…", preview.name, i + 1, previews.length);
         }
-      }
 
-      const manifestName = await writeManifestToFolder();
-      for (const pill of document.querySelectorAll(".pill")) {
-        pill.className = "pill ok";
-        pill.textContent = "Written";
+        updateWriteProgress("正在校验…", "校验写入结果", previews.length, previews.length);
+
+        for (const preview of previews) {
+          const fresh = await scanWave(preview.fileHandle);
+          if (fresh.oldTimeReference !== preview.newTimeReference) {
+            throw new Error(`${preview.name}: 校验失败`);
+          }
+        }
+
+        let manifestName = null;
+        try {
+          updateWriteProgress("正在保存清单…", directoryHandle ? "生成 CSV manifest" : "已跳过清单", previews.length, previews.length);
+          manifestName = await writeManifestToFolder();
+        } catch (error) {
+          log(`Manifest WARN: ${error.message}`);
+        }
+
+        lastUndoBatch = undoBatch;
+        els.undoBtn.disabled = false;
+        for (const pill of document.querySelectorAll(".pill")) {
+          pill.className = "pill ok";
+          pill.textContent = "Written";
+        }
+        await refreshRecordsFromHandles();
+        setState("完成");
+        els.statusLine.textContent = manifestName ? `写入完成；清单：${manifestName}` : "写入完成";
+        log(`Write OK: ${previews.length} files${manifestName ? `; ${manifestName}` : ""}`);
+
+        els.toast.textContent = manifestName
+          ? `✅ 写入完成 — ${previews.length} 个文件，已保存清单`
+          : `✅ 写入完成 — ${previews.length} 个文件`;
+        els.toast.classList.add("show");
+        setTimeout(() => els.toast.classList.remove("show"), 4500);
+      } finally {
+        els.progressOverlay.classList.remove("show");
+        updateWriteProgress("正在写入…", "", 0, previews.length || 1);
+        els.undoBtn.disabled = !lastUndoBatch;
       }
-      setState("完成");
-      els.statusLine.textContent = manifestName;
-      log(`Write OK: ${previews.length} files; ${manifestName}`);
+    }
+
+    async function undoLastWrite() {
+      if (!lastUndoBatch) throw new Error("没有可撤销的写入记录");
+
+      setState("撤销中", "warn");
+      els.applyBtn.disabled = true;
+      els.undoBtn.disabled = true;
+      els.statusLine.textContent = "Undoing...";
+      updateWriteProgress("正在撤销…", "", 0, lastUndoBatch.length);
+      els.progressOverlay.classList.add("show");
+
+      try {
+        for (let i = 0; i < lastUndoBatch.length; i++) {
+          const item = lastUndoBatch[i];
+          updateWriteProgress("正在撤销…", item.name, i, lastUndoBatch.length);
+          await writeTimeReference(item, item.oldTimeReference);
+          updateWriteProgress("正在撤销…", item.name, i + 1, lastUndoBatch.length);
+        }
+
+        updateWriteProgress("正在校验…", "校验撤销结果", lastUndoBatch.length, lastUndoBatch.length);
+        for (const item of lastUndoBatch) {
+          const fresh = await scanWave(item.fileHandle);
+          if (fresh.oldTimeReference !== item.oldTimeReference) {
+            throw new Error(`${item.name}: 撤销校验失败`);
+          }
+        }
+
+        lastUndoBatch = null;
+        previews = [];
+        activeOffset = null;
+        await refreshRecordsFromHandles();
+        renderRows();
+        setState("已撤销");
+        els.statusLine.textContent = "已撤销上一次写入，显示已刷新";
+        log("Undo OK: reverted last write");
+
+        els.toast.textContent = "↩ 撤销完成";
+        els.toast.classList.add("show");
+        setTimeout(() => els.toast.classList.remove("show"), 3500);
+      } finally {
+        els.progressOverlay.classList.remove("show");
+        updateWriteProgress("正在写入…", "", 0, 1);
+        els.undoBtn.disabled = !lastUndoBatch;
+      }
     }
 
     function invalidatePreview() {
@@ -1778,6 +2082,7 @@
 
     els.previewBtn.addEventListener("click", () => guarded(runPreview));
     els.applyBtn.addEventListener("click", () => guarded(applyChanges));
+    els.undoBtn.addEventListener("click", () => guarded(undoLastWrite));
     els.calcBtn.addEventListener("click", () => guarded(calculateTimecodeDifference));
     els.useCalcBtn.addEventListener("click", () => guarded(useCalculatorResult));
     els.calcOpBtn.addEventListener("click", toggleCalculatorOperator);
@@ -1910,6 +2215,8 @@
         }
       }
       if (records.length > count) {
+        lastUndoBatch = null;
+        els.undoBtn.disabled = true;
         els.previewBtn.disabled = false;
         setState("已载入");
         els.statusLine.textContent = `已载入 ${records.length} 个 WAV；输入偏移后点击预览`;
