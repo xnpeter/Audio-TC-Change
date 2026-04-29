@@ -166,7 +166,7 @@
       margin: 0 var(--page-x);
       padding: 16px;
       display: grid;
-      grid-template-columns: var(--timecode-width) 122px minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(280px, 1fr);
+      grid-template-columns: var(--timecode-width) 122px minmax(150px, auto) minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(280px, 1fr);
       gap: 12px;
       align-items: end;
       justify-content: start;
@@ -177,6 +177,27 @@
       height: 46px;
       min-width: 72px;
       justify-content: center;
+    }
+
+    .display-option {
+      height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.2;
+      user-select: none;
+    }
+
+    .display-option input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
     }
 
     .ltc-tools {
@@ -771,6 +792,12 @@
       font-weight: 750;
     }
 
+    .ltc-value-ok {
+      color: #0f8f5f;
+      font-weight: 850;
+      background: #ecfdf3;
+    }
+
     .empty {
       height: 210px;
       display: flex;
@@ -783,7 +810,14 @@
       font-weight: 650;
       background: linear-gradient(180deg, #fff, #fbfcfd);
       user-select: none;
-      cursor: default;
+      cursor: pointer;
+    }
+
+    .empty:hover,
+    .empty:focus-visible {
+      color: var(--accent-strong);
+      background: linear-gradient(180deg, #fbfffe, #f4fbfa);
+      outline: none;
     }
 
     .empty::before {
@@ -796,6 +830,12 @@
       line-height: 50px;
       text-align: center;
       color: var(--muted);
+    }
+
+    .empty:hover::before,
+    .empty:focus-visible::before {
+      border-color: rgba(28, 127, 119, 0.35);
+      color: var(--accent-strong);
     }
 
     .log {
@@ -1097,12 +1137,17 @@
         </div>
       </label>
 
+      <label class="display-option" title="默认按最近整帧显示；勾选后显示 sample 级 sub-frame 余量">
+        <input id="preciseTimecodeInput" type="checkbox">
+        显示sub-frame
+      </label>
+
       <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
       <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
       <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
 
       <div class="ltc-tools" aria-label="extract timecode from audio waveform">
-        <div class="ltc-tools-title">从波形提取时码</div>
+        <div class="ltc-tools-title">从波形提取时码（特别适配ZOOM H6等多轨Mono文件）</div>
         <div class="ltc-actions">
           <button id="extractLtcBtn" type="button" disabled>从音频波形提取时码</button>
           <button id="writeLtcBtn" class="danger" type="button" disabled>将LTC写入文件时码</button>
@@ -1146,7 +1191,7 @@
             </thead>
             <tbody id="previewBody"></tbody>
           </table>
-          <div id="emptyState" class="empty">拖入音频文件</div>
+          <div id="emptyState" class="empty" role="button" tabindex="0">点击选择或拖入音频文件</div>
         </div>
         <div id="log" class="log">Ready.</div>
       </section>
@@ -1194,6 +1239,7 @@
       fpsInput: document.getElementById("fpsInput"),
       fpsSelectButton: document.getElementById("fpsSelectButton"),
       fpsSelectMenu: document.getElementById("fpsSelectMenu"),
+      preciseTimecodeInput: document.getElementById("preciseTimecodeInput"),
       calcStartInput: document.getElementById("calcStartInput"),
       calcStartUpBtn: document.getElementById("calcStartUpBtn"),
       calcStartDownBtn: document.getElementById("calcStartDownBtn"),
@@ -1228,6 +1274,7 @@
       progressPct: document.getElementById("progressPct"),
       progressFile: document.getElementById("progressFile"),
       confirmOverlay: document.getElementById("confirmOverlay"),
+      confirmTitle: document.getElementById("confirmTitle"),
       confirmCopy: document.getElementById("confirmCopy"),
       confirmCancelBtn: document.getElementById("confirmCancelBtn"),
       confirmWriteBtn: document.getElementById("confirmWriteBtn"),
@@ -1281,7 +1328,6 @@
       const keys = new Set();
       for (const [folder, group] of folders) {
         if (group.length < 2) continue;
-        if (!group.every(record => record.channels === 1)) continue;
 
         const sampleRates = new Set(group.map(record => record.sampleRate));
         const bits = new Set(group.map(record => record.bitsPerSample));
@@ -1482,7 +1528,7 @@
         "119.88df": { rate: frac(120000n, 1001n), nominal: 120n, drop: true },
         "120": { rate: frac(120n), nominal: 120n, drop: false },
       };
-      if (presets[value]) return { ...presets[value] };
+      if (presets[value]) return { ...presets[value], value };
       let rate;
       if (value.includes("/")) {
         const [n, d] = value.split("/").map(v => BigInt(v.trim()));
@@ -1495,7 +1541,7 @@
           rate = frac(BigInt(parts[0]) * scale + BigInt(parts[1]), scale);
         }
       }
-      return { ...rate, rate, nominal: nominalFpsFor(rate), drop: false };
+      return { ...rate, rate, nominal: nominalFpsFor(rate), drop: false, value };
     }
 
     function fpsRate(fps) {
@@ -1535,6 +1581,81 @@
         ? (Number(rate.n / 1000n) / 1000).toFixed(2)
         : Number(nominal).toFixed(2);
       return `${label}${fps.drop ? " DF" : ""} FPS`;
+    }
+
+    function fpsSelectLabel(value) {
+      const option = Array.from(els.fpsInput.options).find(item => item.value === value);
+      return option ? `${option.textContent} FPS` : fpsLabel(parseFps(value));
+    }
+
+    function fpsEquivalent(a, b, tolerance = 0.0002) {
+      const rateA = fpsRate(a);
+      const rateB = fpsRate(b);
+      const valueA = Number(rateA.n) / Number(rateA.d);
+      const valueB = Number(rateB.n) / Number(rateB.d);
+      return Math.abs(valueA - valueB) <= tolerance && Boolean(a.drop) === Boolean(b.drop);
+    }
+
+    function fpsValueEquivalent(aValue, bValue) {
+      return fpsEquivalent(parseFps(aValue), parseFps(bValue));
+    }
+
+    function ixmlRateToFpsValue(ixmlInfo) {
+      const rawRate = ixmlInfo?.timecodeRate?.value;
+      if (!rawRate) return null;
+      const flag = (ixmlInfo?.timecodeFlag?.value || "").toUpperCase();
+      const drop = flag === "DF" || flag === "DROP" || flag === "DROPFRAME";
+      let numeric = null;
+
+      try {
+        if (rawRate.includes("/")) {
+          const [n, d] = rawRate.split("/").map(value => Number(value.trim()));
+          if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) numeric = n / d;
+        } else {
+          const match = rawRate.match(/\d+(?:\.\d+)?/);
+          if (match) numeric = Number(match[0]);
+        }
+      } catch (error) {
+        return null;
+      }
+
+      if (!Number.isFinite(numeric)) return null;
+      if (Math.abs(numeric - 24) < 0.0002) return "24";
+      if (Math.abs(numeric - 25) < 0.0002) return "25";
+      if (Math.abs(numeric - 30) < 0.0002) return "30";
+      if (Math.abs(numeric - 48) < 0.0002) return "48";
+      if (Math.abs(numeric - 50) < 0.0002) return "50";
+      if (Math.abs(numeric - 60) < 0.0002) return "60";
+      if (Math.abs(numeric - 96) < 0.0002) return "96";
+      if (Math.abs(numeric - 100) < 0.0002) return "100";
+      if (Math.abs(numeric - 120) < 0.0002) return "120";
+      if (Math.abs(numeric - 24000 / 1001) < 0.0002) return "23.976";
+      if (Math.abs(numeric - 30000 / 1001) < 0.0002) return drop ? "29.97df" : "29.97";
+      if (Math.abs(numeric - 60000 / 1001) < 0.0002) return drop ? "59.94df" : "59.94";
+      if (Math.abs(numeric - 120000 / 1001) < 0.0002) return drop ? "119.88df" : "119.88";
+      return null;
+    }
+
+    function detectedMetadataFps(recordsToCheck = records) {
+      const counts = new Map();
+      for (const record of recordsToCheck) {
+        const value = ixmlRateToFpsValue(record.ixmlInfo);
+        if (!value) continue;
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+      if (!sorted.length) return null;
+      return {
+        value: sorted[0][0],
+        count: sorted[0][1],
+        total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+        all: sorted,
+      };
+    }
+
+    function setFpsValue(value) {
+      els.fpsInput.value = value;
+      els.fpsInput.dispatchEvent(new Event("change", { bubbles: true }));
     }
 
     function offsetSign() {
@@ -1780,13 +1901,17 @@
       const timestampHi = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI");
       const timestampLo = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO");
       const timestampSampleRate = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLE_RATE");
-      if (!timestampHi && !timestampLo && !timestampSampleRate) return null;
+      const timecodeRate = readIxmlField(view, chunkStart, "TIMECODE_RATE");
+      const timecodeFlag = readIxmlField(view, chunkStart, "TIMECODE_FLAG");
+      if (!timestampHi && !timestampLo && !timestampSampleRate && !timecodeRate && !timecodeFlag) return null;
       return {
         chunkStart,
         chunkSize,
         timestampHi,
         timestampLo,
         timestampSampleRate,
+        timecodeRate,
+        timecodeFlag,
       };
     }
 
@@ -1867,12 +1992,34 @@
       };
     }
 
-    function samplesToTimecode(samples, sampleRate, fps) {
+    function displaySubFrameTimecode() {
+      return Boolean(els.preciseTimecodeInput?.checked);
+    }
+
+    function samplesToTimecode(samples, sampleRate, fps, options = {}) {
+      const precise = options.precise ?? displaySubFrameTimecode();
       const totalFrames = mulFrac(frac(samples, BigInt(sampleRate)), fpsRate(fps));
-      const whole = floorFrac(totalFrames);
+      const whole = precise ? floorFrac(totalFrames) : roundFrac(totalFrames);
       const sub = frac(totalFrames.n - whole * totalFrames.d, totalFrames.d);
       const base = framesToTimecode(whole, fps);
-      return sub.n === 0n ? base : `${base} + ${sub.n}/${sub.d}fr`;
+      return precise && sub.n !== 0n ? `${base} + ${sub.n}/${sub.d}fr` : base;
+    }
+
+    function ltcStartTimecode(result, record) {
+      if (result?.newTimeReference == null || !record) return result?.timecode || "";
+      return samplesToTimecode(result.newTimeReference, record.sampleRate, result.fps || defaultDisplayFps());
+    }
+
+    function ltcStatusText(result, record, fps) {
+      if (!result?.ok || result.newTimeReference == null) return result?.statusText || "待检测";
+      const startTimecode = samplesToTimecode(result.newTimeReference, record.sampleRate, result.fps || fps);
+      const dropNote = result.dropMismatch ? " · DF标记不符" : "";
+      const qualityNote = result.qualityLabel ? ` · 质量${result.qualityLabel}` : "";
+      const sourceName = result.sourceRecord?.name || "已检测";
+      const isSource = result.sourceRecord && recordKey(record) === recordKey(result.sourceRecord);
+      return isSource
+        ? `起始 ${startTimecode} · ${sourceName} 第${result.channelLabel}轨 · ${Math.round(result.confidence * 100)}%${qualityNote}${dropNote}`
+        : `起始 ${startTimecode} · 来自 ${sourceName} · ${Math.round(result.confidence * 100)}%${qualityNote}${dropNote}`;
     }
 
     function roundFrac(value) {
@@ -1930,10 +2077,82 @@
           sumSquares += sample * sample;
         }
 
+        const rawPeak = Math.max(Math.abs(min), Math.abs(max));
+        const rawP2p = max - min;
+        const rawRms = Math.sqrt(sumSquares / Math.max(1, samples));
+        const filtered = this.highPass(data, record.sampleRate);
+        const stats = this.channelStats(filtered);
+        return {
+          ...stats,
+          data: filtered,
+          rawPeak,
+          rawP2p,
+          rawRms,
+        };
+      },
+
+      highPass(data, sampleRate, cutoff = 120) {
+        if (!data.length) return data;
+        const out = new Float32Array(data.length);
+        const dt = 1 / sampleRate;
+        const rc = 1 / (2 * Math.PI * cutoff);
+        const alpha = rc / (rc + dt);
+        let previousIn = data[0];
+        let previousOut = 0;
+        for (let i = 1; i < data.length; i++) {
+          const value = alpha * (previousOut + data[i] - previousIn);
+          out[i] = value;
+          previousIn = data[i];
+          previousOut = value;
+        }
+        return out;
+      },
+
+      channelStats(data, start = 0, end = data.length) {
+        let min = Infinity;
+        let max = -Infinity;
+        let sumSquares = 0;
+        let clipped = 0;
+        const length = Math.max(0, end - start);
+        for (let i = start; i < end; i++) {
+          const sample = data[i];
+          min = Math.min(min, sample);
+          max = Math.max(max, sample);
+          sumSquares += sample * sample;
+          if (Math.abs(sample) > 0.98) clipped++;
+        }
+        if (!length) return { min: 0, max: 0, peak: 0, p2p: 0, rms: 0, clippedRatio: 0 };
         const peak = Math.max(Math.abs(min), Math.abs(max));
-        const p2p = max - min;
-        const rms = Math.sqrt(sumSquares / Math.max(1, samples));
-        return { data, min, max, peak, p2p, rms };
+        return {
+          min,
+          max,
+          peak,
+          p2p: max - min,
+          rms: Math.sqrt(sumSquares / length),
+          clippedRatio: clipped / length,
+        };
+      },
+
+      channelWindows(channel, sampleRate) {
+        const windowSamples = Math.max(sampleRate * 4, 1);
+        const hopSamples = Math.max(sampleRate * 2, 1);
+        if (channel.data.length <= windowSamples) {
+          return [{ ...this.channelStats(channel.data), data: channel.data, baseSample: 0, windowStart: 0, windowEnd: channel.data.length }];
+        }
+        const windows = [];
+        for (let start = 0; start < channel.data.length; start += hopSamples) {
+          const end = Math.min(channel.data.length, start + windowSamples);
+          if (end - start < sampleRate) break;
+          windows.push({
+            ...this.channelStats(channel.data, start, end),
+            data: channel.data.subarray(start, end),
+            baseSample: start,
+            windowStart: start,
+            windowEnd: end,
+          });
+          if (end === channel.data.length) break;
+        }
+        return windows;
       },
 
       findEdges(channel, expectedHalfBitSamples) {
@@ -1941,6 +2160,7 @@
         const center = (channel.max + channel.min) / 2;
         const hysteresis = Math.max(channel.p2p * 0.08, channel.rms * 0.18, 0.006);
         const minEdgeDistance = Math.max(2, expectedHalfBitSamples * 0.35);
+        const baseSample = channel.baseSample || 0;
         const edges = [];
         let state = channel.data[0] >= center ? 1 : -1;
         let lastEdge = -Infinity;
@@ -1954,7 +2174,7 @@
             const prev = channel.data[i - 1];
             const denom = sample - prev;
             const crossing = denom === 0 ? i : (i - 1) + (center - prev) / denom;
-            edges.push(crossing);
+            edges.push(crossing + baseSample);
             lastEdge = crossing;
           }
           state = nextState;
@@ -1969,6 +2189,7 @@
         const bitEnds = [];
         let half = expectedHalfBitSamples;
         let rejected = 0;
+        const observedHalves = [];
 
         for (let i = 0; i < edges.length - 1;) {
           const interval = edges[i + 1] - edges[i];
@@ -1981,6 +2202,7 @@
               bits.push(1);
               bitStarts.push(edges[i]);
               bitEnds.push(edges[i + 2]);
+              observedHalves.push(interval, nextInterval);
               half = half * 0.85 + ((interval + nextInterval) / 2) * 0.15;
               i += 2;
               continue;
@@ -1991,6 +2213,7 @@
             bits.push(0);
             bitStarts.push(edges[i]);
             bitEnds.push(edges[i + 1]);
+            observedHalves.push(interval / 2);
             half = half * 0.9 + (interval / 2) * 0.1;
             i += 1;
             continue;
@@ -2000,7 +2223,13 @@
           i += 1;
         }
 
-        return { bits, bitStarts, bitEnds, rejected, trackedHalfBitSamples: half };
+        const observedMean = observedHalves.length
+          ? observedHalves.reduce((sum, value) => sum + value, 0) / observedHalves.length
+          : half;
+        const observedJitter = observedHalves.length
+          ? Math.sqrt(observedHalves.reduce((sum, value) => sum + (value - observedMean) ** 2, 0) / observedHalves.length) / Math.max(observedMean, 1)
+          : 1;
+        return { bits, bitStarts, bitEnds, rejected, trackedHalfBitSamples: half, observedHalfBitSamples: observedMean, observedJitter };
       },
 
       hasSync(bits) {
@@ -2024,13 +2253,14 @@
         }
       },
 
-      frameAt(decoded, start, fps, reverse = false) {
+      frameAt(decoded, start, fps, reverse = false, strictDrop = true) {
         if (start < 0 || start + 80 > decoded.bits.length) return null;
         const bits = decoded.bits.slice(start, start + 80);
         const candidateBits = reverse ? bits.slice().reverse() : bits;
         if (!this.hasSync(candidateBits)) return null;
         const frame = this.parseFrame(candidateBits, fps);
         if (!frame) return null;
+        if (strictDrop && frame.drop !== Boolean(fps.drop)) return null;
         return {
           ...frame,
           bitStart: start,
@@ -2040,11 +2270,11 @@
         };
       },
 
-      consecutiveRun(decoded, start, fps, reverse = false) {
+      consecutiveRun(decoded, start, fps, reverse = false, strictDrop = true) {
         const frames = [];
-        for (let offset = 0; offset < 8; offset++) {
+        for (let offset = 0; offset < 12; offset++) {
           const bitStart = start + offset * 80;
-          const frame = this.frameAt(decoded, bitStart, fps, reverse);
+          const frame = this.frameAt(decoded, bitStart, fps, reverse, strictDrop);
           if (!frame) break;
           if (frames.length) {
             const expected = reverse ? frames[frames.length - 1].frames - 1n : frames[frames.length - 1].frames + 1n;
@@ -2055,22 +2285,54 @@
         return frames;
       },
 
-      chooseCandidate(decoded, record, fps, stats) {
+      qualityFor(candidate) {
+        if (candidate.confidence >= 0.82 && candidate.lockedFrames >= 6 && candidate.halfBitError <= 0.0025 && candidate.rejectRatio <= 0.08) {
+          return { label: "高", rank: 3 };
+        }
+        if (candidate.confidence >= 0.62 && candidate.lockedFrames >= 3 && candidate.halfBitError <= 0.008 && candidate.rejectRatio <= 0.2) {
+          return { label: "中", rank: 2 };
+        }
+        return { label: "低", rank: 1 };
+      },
+
+      compareResults(a, b) {
+        if ((b.qualityRank || 0) !== (a.qualityRank || 0)) return (b.qualityRank || 0) - (a.qualityRank || 0);
+        if (Math.abs((a.halfBitError || 1) - (b.halfBitError || 1)) > 0.00025) return (a.halfBitError || 1) - (b.halfBitError || 1);
+        if ((b.lockedFrames || 0) !== (a.lockedFrames || 0)) return (b.lockedFrames || 0) - (a.lockedFrames || 0);
+        if ((b.confidence || 0) !== (a.confidence || 0)) return (b.confidence || 0) - (a.confidence || 0);
+        if (Boolean(a.reverse) !== Boolean(b.reverse)) return Number(a.reverse) - Number(b.reverse);
+        return (a.sampleOffset || 0) - (b.sampleOffset || 0);
+      },
+
+      chooseCandidate(decoded, record, fps, stats, expectedHalfBitSamples, strictDrop = true) {
         let best = null;
         for (let start = 0; start + 80 <= decoded.bits.length; start++) {
           for (const reverse of [false, true]) {
-            const run = this.consecutiveRun(decoded, start, fps, reverse);
+            const run = this.consecutiveRun(decoded, start, fps, reverse, strictDrop);
             if (run.length < 2) continue;
             const first = run[0];
+            const last = run[run.length - 1];
             const sampleOffset = Math.max(0, Math.round(first.sampleStart || 0));
             const tcSamples = framesToSamples(first.frames, record.sampleRate, fps);
             const newTimeReference = tcSamples - BigInt(sampleOffset);
             if (newTimeReference < 0n) continue;
-            const lockScore = Math.min(1, run.length / 4);
+            const measuredHalfBitSamples = (last.sampleEnd - first.sampleStart) / Math.max(1, run.length * 80 * 2);
+            const halfBitError = Math.abs(measuredHalfBitSamples - expectedHalfBitSamples) / expectedHalfBitSamples;
+            const rejectRatio = decoded.rejected / Math.max(1, decoded.rejected + decoded.bits.length);
+            const lockScore = Math.min(1, run.length / 8);
+            const halfScore = Math.max(0, Math.min(1, 1 - halfBitError / 0.006));
+            const consistencyScore = Math.max(0, Math.min(1, 1 - (decoded.observedJitter || 0) / 0.18));
             const edgeScore = Math.min(1, decoded.bits.length / 320);
-            const rejectPenalty = decoded.rejected / Math.max(1, decoded.rejected + decoded.bits.length);
             const levelScore = Math.min(1, stats.p2p / 0.6);
-            const confidence = Math.max(0, Math.min(1, lockScore * 0.45 + edgeScore * 0.25 + levelScore * 0.2 - rejectPenalty * 0.25 + 0.1));
+            const confidence = Math.max(0, Math.min(1,
+              lockScore * 0.3 +
+              halfScore * 0.3 +
+              consistencyScore * 0.12 +
+              edgeScore * 0.12 +
+              levelScore * 0.12 -
+              rejectRatio * 0.18 +
+              0.04
+            ));
             const candidate = {
               ...first,
               sampleOffset,
@@ -2078,6 +2340,12 @@
               confidence,
               lockedFrames: run.length,
               reverse,
+              measuredHalfBitSamples,
+              halfBitError,
+              rejectRatio,
+              observedJitter: decoded.observedJitter,
+              windowStart: stats.windowStart || 0,
+              windowEnd: stats.windowEnd || stats.data?.length || 0,
               diagnostics: {
                 peak: stats.peak,
                 rms: stats.rms,
@@ -2085,9 +2353,19 @@
                 decodedBits: decoded.bits.length,
                 rejectedEdges: decoded.rejected,
                 trackedHalfBitSamples: decoded.trackedHalfBitSamples,
+                observedHalfBitSamples: decoded.observedHalfBitSamples,
+                observedJitter: decoded.observedJitter,
+                measuredHalfBitSamples,
+                halfBitError,
+                rejectRatio,
+                windowStart: stats.windowStart || 0,
+                windowEnd: stats.windowEnd || stats.data?.length || 0,
               },
             };
-            if (!best || candidate.confidence > best.confidence || candidate.lockedFrames > best.lockedFrames) best = candidate;
+            const quality = this.qualityFor(candidate);
+            candidate.qualityLabel = quality.label;
+            candidate.qualityRank = quality.rank;
+            if (!best || this.compareResults(candidate, best) < 0) best = candidate;
           }
         }
         return best;
@@ -2097,15 +2375,27 @@
         const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
         const expectedHalfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
         const channel = await this.readChannel(record, channelIndex);
-        const edges = this.findEdges(channel, expectedHalfBitSamples);
-        if (edges.length < 160) return null;
-        const decoded = this.decodeBits(edges, expectedHalfBitSamples);
-        const best = this.chooseCandidate(decoded, record, fps, channel);
+        return this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples);
+      },
+
+      detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples = null, strictDrop = true) {
+        const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
+        const halfBitSamples = expectedHalfBitSamples || record.sampleRate / (fpsValue * 80 * 2);
+        let best = null;
+        for (const window of this.channelWindows(channel, record.sampleRate)) {
+          const edges = this.findEdges(window, halfBitSamples);
+          if (edges.length < 160) continue;
+          const decoded = this.decodeBits(edges, halfBitSamples);
+          const candidate = this.chooseCandidate(decoded, record, fps, window, halfBitSamples, strictDrop);
+          if (!candidate) continue;
+          if (!best || this.compareResults(candidate, best) < 0) best = candidate;
+        }
         if (!best) return null;
         return {
           ...best,
           channelIndex,
           channelLabel: `${channelIndex + 1}`,
+          halfBitSamples,
         };
       },
 
@@ -2115,13 +2405,77 @@
           const result = await this.detectOnChannel(record, channelIndex, fps);
           if (result) results.push(result);
         }
-        results.sort((a, b) => b.confidence - a.confidence);
+        results.sort((a, b) => this.compareResults(a, b));
         return results[0] || null;
+      },
+
+      candidateFpsValues() {
+        return Array.from(els.fpsInput.options).map(option => option.value);
+      },
+
+      async detectAuto(record, preferredFps) {
+        const preferredValue = preferredFps.value || els.fpsInput.value;
+        const values = [
+          preferredValue,
+          ...this.candidateFpsValues().filter(value => value !== preferredValue),
+        ];
+        const results = [];
+
+        for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
+          const channel = await this.readChannel(record, channelIndex);
+          for (const value of values) {
+            const fps = parseFps(value);
+            const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
+            const expectedHalfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
+            let result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, true);
+            if (!result && value === preferredValue) {
+              result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, false);
+              if (result) result.dropMismatch = result.drop !== Boolean(fps.drop);
+            }
+            if (result) {
+              results.push({
+                ...result,
+                fps,
+                fpsValue: value,
+                fpsLabel: fpsSelectLabel(value),
+                preferred: value === preferredValue,
+              });
+            }
+          }
+        }
+
+        results.sort((a, b) => {
+          if (Boolean(a.dropMismatch) !== Boolean(b.dropMismatch)) return Number(a.dropMismatch) - Number(b.dropMismatch);
+          if ((b.qualityRank || 0) !== (a.qualityRank || 0)) return (b.qualityRank || 0) - (a.qualityRank || 0);
+          if (Math.abs(a.halfBitError - b.halfBitError) > 0.00025) return a.halfBitError - b.halfBitError;
+          if (b.lockedFrames !== a.lockedFrames) return b.lockedFrames - a.lockedFrames;
+          if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+          return Number(b.preferred) - Number(a.preferred);
+        });
+
+        return {
+          best: results[0] || null,
+          preferred: results.find(result => result.fpsValue === preferredValue) || null,
+          results,
+        };
       },
     };
 
     async function detectLtc(record, fps) {
       return LtcDecoder.detect(record, fps);
+    }
+
+    async function detectLtcAuto(record, fps) {
+      return LtcDecoder.detectAuto(record, fps);
+    }
+
+    function shouldPromptForAutoFps(auto, currentValue) {
+      if (!auto.best || auto.best.fpsValue === currentValue) return false;
+      if (auto.best.halfBitError > 0.008) return false;
+      const current = auto.preferred;
+      if (!current) return true;
+      if ((auto.best.qualityRank || 0) > (current.qualityRank || 0)) return true;
+      return current.halfBitError - auto.best.halfBitError > 0.00035;
     }
 
     function calculateTimecodeDifference() {
@@ -2180,6 +2534,7 @@
         "new_time_reference", "duration_samples", "old_start_tc", "new_start_tc",
         "old_end_tc", "new_end_tc"
       ];
+      const fps = defaultDisplayFps();
       const rows = previews.map(p => ({
         file: recordLabel(p),
         sample_rate: p.sampleRate,
@@ -2192,10 +2547,10 @@
         old_time_reference: p.oldTimeReference,
         new_time_reference: p.newTimeReference,
         duration_samples: p.durationSamples,
-        old_start_tc: p.oldStartTc,
-        new_start_tc: p.newStartTc,
-        old_end_tc: p.oldEndTc,
-        new_end_tc: p.newEndTc,
+        old_start_tc: samplesToTimecode(p.oldTimeReference, p.sampleRate, fps),
+        new_start_tc: samplesToTimecode(p.newTimeReference, p.sampleRate, fps),
+        old_end_tc: samplesToTimecode(p.oldTimeReference + p.durationSamples, p.sampleRate, fps),
+        new_end_tc: samplesToTimecode(p.newTimeReference + p.durationSamples, p.sampleRate, fps),
       }));
       return [headers.join(","), ...rows.map(row => headers.map(h => toCsvValue(row[h])).join(","))].join("\n");
     }
@@ -2217,6 +2572,8 @@
           const td = document.createElement("td");
           td.colSpan = 14;
           const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
+          const detectedRecord = detected?.record || groupRecords[0];
+          const detectedStartTc = detected ? ltcStartTimecode(detected, detectedRecord) : "";
           td.innerHTML = "";
           const title = document.createElement("span");
           title.className = "group-title";
@@ -2225,7 +2582,7 @@
           name.textContent = shortGroupLabel(key);
           const meta = document.createElement("span");
           meta.className = "group-meta";
-          meta.textContent = `${groupRecords.length} 个分轨${detected ? ` · LTC ${detected.timecode} · ${detected.sourceRecord?.name || "已检测"}` : ""}`;
+          meta.textContent = `${groupRecords.length} 个分轨${detected ? ` · LTC起始 ${detectedStartTc} · ${detected.sourceRecord?.name || "已检测"}` : ""}`;
           title.append(name, meta);
           td.appendChild(title);
           groupRow.appendChild(td);
@@ -2244,13 +2601,13 @@
             record.channels,
             record.bitsPerSample,
             samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
-            preview ? preview.newStartTc : "待预览",
+            preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate, fps) : "待预览",
             samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
-            preview ? preview.newEndTc : "待预览",
+            preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, record.sampleRate, fps) : "待预览",
             record.oldTimeReference,
             preview ? preview.newTimeReference : "待预览",
-            ltc?.timecode || "待检测",
-            ltc ? ltc.statusText : "待检测",
+            ltc ? ltcStartTimecode(ltc, record) : "待检测",
+            ltc ? ltcStatusText(ltc, record, fps) : "待检测",
             formatDuration(record.durationSamples, record.sampleRate),
           ];
           cells.forEach((cell, index) => {
@@ -2268,6 +2625,7 @@
             if (preview && [5, 7, 9].includes(index)) td.classList.add("new-value");
             if ([10, 11].includes(index)) td.classList.add("ltc-col");
             if (index === 10 && (!ltc || !ltc.timecode)) td.classList.add("pending");
+            if (index === 10 && ltc?.ok) td.classList.add("ltc-value-ok");
             row.appendChild(td);
           });
           const result = document.createElement("td");
@@ -2356,76 +2714,115 @@
 
     async function extractLtcFromFiles() {
       if (!records.length) throw new Error("请先拖入 WAV 文件");
-      const fps = parseFps(els.fpsInput.value);
-      const groups = Array.from(recordsByGroup().entries());
-      ltcResults = new Map();
-      els.writeLtcBtn.disabled = true;
-      setState("LTC检测中", "warn");
-      els.statusLine.textContent = "正在按 take 文件夹从音频波形读取 LTC...";
-      updateWriteProgress("正在检测 LTC…", "", 0, groups.length);
-      els.progressOverlay.classList.add("show");
+      let fpsValue = els.fpsInput.value;
+      let allowFpsPrompt = true;
 
-      try {
-        for (let i = 0; i < groups.length; i++) {
-          const [takeKey, groupRecords] = groups[i];
-          updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i, groups.length);
-          let detected = null;
-          let detectError = null;
+      while (true) {
+        const fps = parseFps(fpsValue);
+        const groups = Array.from(recordsByGroup().entries());
+        let restartWithFps = null;
+        ltcResults = new Map();
+        els.writeLtcBtn.disabled = true;
+        setState("LTC检测中", "warn");
+        els.statusLine.textContent = "正在按 take 文件夹从音频波形读取 LTC...";
+        updateWriteProgress("正在检测 LTC…", "", 0, groups.length);
+        els.progressOverlay.classList.add("show");
 
-          try {
-            for (const record of groupRecords) {
-              const result = await detectLtc(record, fps);
-              if (result) {
-                detected = { ...result, sourceRecord: record, groupKey: takeKey };
-                break;
+        try {
+          for (let i = 0; i < groups.length; i++) {
+            const [takeKey, groupRecords] = groups[i];
+            updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i, groups.length);
+            let detected = null;
+            let detectError = null;
+
+            try {
+              for (const record of groupRecords) {
+                const auto = await detectLtcAuto(record, fps);
+                let result = auto.best?.fpsValue === fpsValue ? auto.best : auto.preferred;
+
+                if (shouldPromptForAutoFps(auto, fpsValue) && allowFpsPrompt) {
+                  els.progressOverlay.classList.remove("show");
+                  const useAuto = await confirmLtcFpsMismatch({
+                    currentValue: fpsValue,
+                    detectedValue: auto.best.fpsValue,
+                    detectedTimecode: auto.best.timecode,
+                    group: groupLabel(groupRecords[0]),
+                  });
+                  allowFpsPrompt = false;
+
+                  if (useAuto) {
+                    restartWithFps = auto.best.fpsValue;
+                    setFpsValue(restartWithFps);
+                    break;
+                  }
+
+                  els.progressOverlay.classList.add("show");
+                  result = auto.preferred;
+                }
+
+                if (result) {
+                  detected = { ...result, sourceRecord: record, groupKey: takeKey };
+                  break;
+                }
               }
+            } catch (error) {
+              detectError = error;
             }
-          } catch (error) {
-            detectError = error;
+
+            if (restartWithFps) break;
+
+            if (detected) {
+              for (const record of groupRecords) {
+                const startTimecode = samplesToTimecode(detected.newTimeReference, record.sampleRate, detected.fps || fps);
+                const result = {
+                  ...detected,
+                  record,
+                  ok: true,
+                  status: "ok",
+                  startTimecode,
+                  sourceTimecode: detected.timecode,
+                };
+                result.statusText = ltcStatusText(result, record, fps);
+                ltcResults.set(recordKey(record), result);
+              }
+              const dropNote = detected.dropMismatch ? " · DF标记与当前设置不符" : "";
+              const logStartTc = samplesToTimecode(detected.newTimeReference, groupRecords[0].sampleRate, detected.fps || fps);
+              log(`LTC OK: ${groupLabel(groupRecords[0])} -> start ${logStartTc}, source frame ${detected.timecode} @ ${detected.sampleOffset} samples, ${detected.fpsLabel || fpsLabel(fps)}${dropNote}, source ${detected.sourceRecord.name}, ${detected.lockedFrames} frames, quality ${detected.qualityLabel}, half error ${(detected.halfBitError * 100).toFixed(3)}%, confidence ${Math.round(detected.confidence * 100)}%`);
+            } else {
+              for (const record of groupRecords) {
+                ltcResults.set(recordKey(record), {
+                  ok: false,
+                  status: detectError ? "err" : "warn",
+                  statusText: detectError ? detectError.message : "本take未检测到 LTC",
+                });
+              }
+              log(detectError
+                ? `LTC ERROR: ${groupLabel(groupRecords[0])}: ${detectError.message}`
+                : `LTC MISS: ${groupLabel(groupRecords[0])}`);
+            }
+
+            updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i + 1, groups.length);
+            renderRows();
           }
 
-          if (detected) {
-            for (const record of groupRecords) {
-              const isSource = recordKey(record) === recordKey(detected.sourceRecord);
-              ltcResults.set(recordKey(record), {
-                ...detected,
-                record,
-                ok: true,
-                status: "ok",
-                timecode: detected.timecode,
-                statusText: isSource
-                  ? `检测到：${detected.sourceRecord.name} 第 ${detected.channelLabel} 轨 · 连续${detected.lockedFrames}帧 · ${Math.round(detected.confidence * 100)}%`
-                  : `同take：来自 ${detected.sourceRecord.name} · ${Math.round(detected.confidence * 100)}%`,
-              });
-            }
-            log(`LTC OK: ${groupLabel(groupRecords[0])} -> ${detected.timecode}, source ${detected.sourceRecord.name}, ${detected.lockedFrames} frames, confidence ${Math.round(detected.confidence * 100)}%`);
-          } else {
-            for (const record of groupRecords) {
-              ltcResults.set(recordKey(record), {
-                ok: false,
-                status: detectError ? "err" : "warn",
-                statusText: detectError ? detectError.message : "本take未检测到 LTC",
-              });
-            }
-            log(detectError
-              ? `LTC ERROR: ${groupLabel(groupRecords[0])}: ${detectError.message}`
-              : `LTC MISS: ${groupLabel(groupRecords[0])}`);
+          if (restartWithFps) {
+            fpsValue = restartWithFps;
+            continue;
           }
 
-          updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i + 1, groups.length);
+          const okGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok).map(result => result.groupKey));
+          const okFiles = Array.from(ltcResults.values()).filter(result => result.ok).length;
+          const lowQualityGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok && result.qualityRank === 1).map(result => result.groupKey));
+          setState(okGroups.size ? "LTC可写入" : "未检测到LTC", okGroups.size ? "ok" : "warn");
+          els.statusLine.textContent = okGroups.size
+            ? `已检测到 ${okGroups.size} 个 take 的 LTC；将写入 ${okFiles} 个 WAV${lowQualityGroups.size ? `；${lowQualityGroups.size} 个低质量请人工确认` : ""}`
+            : "没有检测到可写入的 LTC";
           renderRows();
+          break;
+        } finally {
+          els.progressOverlay.classList.remove("show");
+          updateWriteProgress("正在写入…", "", 0, groups.length || 1);
         }
-
-        const okGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok).map(result => result.groupKey));
-        const okFiles = Array.from(ltcResults.values()).filter(result => result.ok).length;
-        setState(okGroups.size ? "LTC可写入" : "未检测到LTC", okGroups.size ? "ok" : "warn");
-        els.statusLine.textContent = okGroups.size
-          ? `已检测到 ${okGroups.size} 个 take 的 LTC；将写入 ${okFiles} 个 WAV`
-          : "没有检测到可写入的 LTC";
-        renderRows();
-      } finally {
-        els.progressOverlay.classList.remove("show");
-        updateWriteProgress("正在写入…", "", 0, groups.length || 1);
       }
     }
 
@@ -2626,7 +3023,7 @@
       els.progressPct.textContent = `${percent}%`;
     }
 
-    function confirmWriteChanges(count, includesLtcMute = false) {
+    function showConfirmDialog({ title, copy, cancelText = "取消", confirmText = "确认", danger = false }) {
       return new Promise(resolve => {
         const previousFocus = document.activeElement;
         let settled = false;
@@ -2658,7 +3055,26 @@
           }
         }
 
-        els.confirmCopy.innerHTML = includesLtcMute
+        els.confirmTitle.textContent = title;
+        els.confirmCopy.innerHTML = copy;
+        els.confirmCancelBtn.textContent = cancelText;
+        els.confirmWriteBtn.textContent = confirmText;
+        els.confirmWriteBtn.classList.toggle("danger", danger);
+        els.confirmOverlay.classList.add("show");
+        els.confirmOverlay.setAttribute("aria-hidden", "false");
+        els.confirmCancelBtn.addEventListener("click", onCancel);
+        els.confirmWriteBtn.addEventListener("click", onConfirm);
+        document.addEventListener("keydown", onKeydown);
+        requestAnimationFrame(() => els.confirmCancelBtn.focus());
+      });
+    }
+
+    function confirmWriteChanges(count, includesLtcMute = false) {
+      return showConfirmDialog({
+        title: "确认写入文件？",
+        danger: true,
+        confirmText: "确认写入",
+        copy: includesLtcMute
           ? [
             `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
             "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
@@ -2666,13 +3082,33 @@
           : [
             `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
             "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
-          ].join("<br>");
-        els.confirmOverlay.classList.add("show");
-        els.confirmOverlay.setAttribute("aria-hidden", "false");
-        els.confirmCancelBtn.addEventListener("click", onCancel);
-        els.confirmWriteBtn.addEventListener("click", onConfirm);
-        document.addEventListener("keydown", onKeydown);
-        requestAnimationFrame(() => els.confirmCancelBtn.focus());
+          ].join("<br>"),
+      });
+    }
+
+    function confirmLtcFpsMismatch({ currentValue, detectedValue, detectedTimecode, group }) {
+      return showConfirmDialog({
+        title: "LTC 帧率可能不匹配",
+        cancelText: `按当前 ${fpsSelectLabel(currentValue)}`,
+        confirmText: `改用 ${fpsSelectLabel(detectedValue)}`,
+        copy: [
+          `当前设置是 <strong>${fpsSelectLabel(currentValue)}</strong>，但 LTC 波形更像 <strong>${fpsSelectLabel(detectedValue)}</strong>。`,
+          `检测到的时码：<strong>${detectedTimecode}</strong>${group ? `（${group}）` : ""}`,
+          "请选择继续按当前设置解析，还是切换到自动识别的帧率重新检测。"
+        ].join("<br>"),
+      });
+    }
+
+    function confirmMetadataFpsMismatch({ currentValue, metadata }) {
+      return showConfirmDialog({
+        title: "音频文件记录的帧率不同",
+        cancelText: `保持 ${fpsSelectLabel(currentValue)}`,
+        confirmText: `改用 ${fpsSelectLabel(metadata.value)}`,
+        copy: [
+          `当前界面设置是 <strong>${fpsSelectLabel(currentValue)}</strong>。`,
+          `导入文件的 iXML 元数据里有 <strong>${metadata.count}/${metadata.total}</strong> 个文件记录为 <strong>${fpsSelectLabel(metadata.value)}</strong>。`,
+          "请选择继续使用当前设置，还是切换到文件元数据记录的帧率。"
+        ].join("<br>"),
       });
     }
 
@@ -2964,11 +3400,16 @@
       normalizeTimecodeInput(els.calcStartInput, null, false);
       normalizeTimecodeInput(els.calcEndInput, null, false);
       try { calculateTimecodeDifference(); } catch (e) {}
+      renderRows();
+    });
+
+    els.preciseTimecodeInput.addEventListener("change", () => {
+      renderRows();
     });
 
     if (!("showDirectoryPicker" in window)) {
       setState("浏览器不支持", "warn");
-      els.statusLine.textContent = "Chrome / Edge recommended";
+      els.statusLine.textContent = "Chrome / Edge recommended；也可以尝试直接拖入音频文件夹";
       els.previewBtn.disabled = true;
     }
 
@@ -3002,32 +3443,113 @@
       }
     }
 
-    async function handleDropItems(items) {
-      let count = records.length;
-      for (const item of items) {
-        try {
-          if (item.getAsFileSystemHandle) {
-            const handle = await item.getAsFileSystemHandle();
-            await addHandle(handle);
-          }
-        } catch (error) {
-          log(`ERROR: ${error.message}`);
+    async function finishImport(count, sourceLabel) {
+      if (records.length <= count) return;
+      lastUndoBatch = null;
+      ltcResults = new Map();
+      refreshTakeGroups();
+      els.undoBtn.disabled = true;
+      els.previewBtn.disabled = false;
+      els.extractLtcBtn.disabled = false;
+      els.writeLtcBtn.disabled = true;
+      setState("已载入");
+      const takeText = takeGroupKeys.size ? `，识别到 ${takeGroupKeys.size} 个分轨 take` : "";
+      els.statusLine.textContent = `已载入 ${records.length} 个 WAV${takeText}；输入偏移后点击预览`;
+      renderRows();
+      log(`${sourceLabel}: ${records.length - count} WAV file(s)`);
+
+      const metadata = detectedMetadataFps(records.slice(count));
+      if (metadata && !fpsValueEquivalent(metadata.value, els.fpsInput.value)) {
+        const useMetadata = await confirmMetadataFpsMismatch({
+          currentValue: els.fpsInput.value,
+          metadata,
+        });
+        if (useMetadata) {
+          setFpsValue(metadata.value);
+          log(`FPS: switched to ${fpsSelectLabel(metadata.value)} from iXML metadata`);
+        } else {
+          log(`FPS: kept ${fpsSelectLabel(els.fpsInput.value)} despite iXML metadata ${fpsSelectLabel(metadata.value)}`);
         }
       }
-      if (records.length > count) {
-        lastUndoBatch = null;
-        ltcResults = new Map();
-        refreshTakeGroups();
-        els.undoBtn.disabled = true;
-        els.previewBtn.disabled = false;
-        els.extractLtcBtn.disabled = false;
-        els.writeLtcBtn.disabled = true;
-        setState("已载入");
-        const takeText = takeGroupKeys.size ? `，识别到 ${takeGroupKeys.size} 个分轨 take` : "";
-        els.statusLine.textContent = `已载入 ${records.length} 个 WAV${takeText}；输入偏移后点击预览`;
-        renderRows();
-        log(`Dropped ${records.length - count} WAV file(s)`);
+    }
+
+    function entryFile(entry) {
+      return new Promise((resolve, reject) => entry.file(resolve, reject));
+    }
+
+    function readEntryBatch(reader) {
+      return new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    }
+
+    async function addEntry(entry, basePath = entry.name) {
+      if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const entries = [];
+        while (true) {
+          const batch = await readEntryBatch(reader);
+          if (!batch.length) break;
+          entries.push(...batch);
+        }
+        entries.sort((a, b) => {
+          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        for (const child of entries) {
+          await addEntry(child, `${basePath}/${child.name}`);
+        }
+      } else if (entry.isFile && WAV_SUFFIX.test(entry.name)) {
+        const file = await entryFile(entry);
+        records.push(await scanWave({
+          kind: "file",
+          name: entry.name,
+          getFile: async () => file,
+        }, {
+          relativePath: basePath,
+          parentPath: basePath.split("/").slice(0, -1).join("/"),
+        }));
       }
+    }
+
+    async function droppedHandles(items) {
+      const pending = [];
+      for (const item of items) {
+        if (item.getAsFileSystemHandle) {
+          pending.push(item.getAsFileSystemHandle());
+        }
+      }
+      return (await Promise.all(pending)).filter(Boolean);
+    }
+
+    async function handleDropItems(items) {
+      let count = records.length;
+      const handles = await droppedHandles(items);
+      if (handles.length) {
+        for (const handle of handles) {
+          try {
+            await addHandle(handle);
+          } catch (error) {
+            log(`ERROR: ${error.message}`);
+          }
+        }
+      } else {
+        for (const item of items) {
+          try {
+            const entry = item.webkitGetAsEntry?.();
+            if (entry) await addEntry(entry);
+          } catch (error) {
+            log(`ERROR: ${error.message}`);
+          }
+        }
+      }
+      await finishImport(count, "Dropped");
+    }
+
+    async function chooseAudioPath() {
+      if (!window.showDirectoryPicker) throw new Error("当前浏览器不支持点击选择文件夹，请直接拖入音频文件夹");
+      const count = records.length;
+      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      await addHandle(handle);
+      await finishImport(count, "Selected");
     }
 
     function setupDragAndDrop() {
@@ -3047,6 +3569,13 @@
         event.stopPropagation();
         app.classList.remove("drag-over");
         await guarded(() => handleDropItems(event.dataTransfer.items));
+      });
+
+      els.emptyState.addEventListener("click", () => guarded(chooseAudioPath));
+      els.emptyState.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        guarded(chooseAudioPath);
       });
     }
 
