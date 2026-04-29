@@ -166,7 +166,7 @@
       margin: 0 var(--page-x);
       padding: 16px;
       display: grid;
-      grid-template-columns: var(--timecode-width) 122px minmax(86px, auto) minmax(86px, auto) minmax(86px, auto);
+      grid-template-columns: var(--timecode-width) 122px minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(280px, 1fr);
       gap: 12px;
       align-items: end;
       justify-content: start;
@@ -177,6 +177,36 @@
       height: 46px;
       min-width: 72px;
       justify-content: center;
+    }
+
+    .ltc-tools {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 10px;
+      display: grid;
+      gap: 9px;
+      align-self: stretch;
+    }
+
+    .ltc-tools-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1;
+    }
+
+    .ltc-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .ltc-actions button {
+      height: 38px;
+      min-width: 0;
+      justify-content: center;
+      padding: 0 10px;
     }
 
     label {
@@ -684,6 +714,49 @@
 
     tbody tr:hover { background: #f8fbfb; }
 
+    .group-row td {
+      background: #eef4f6;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      color: #344054;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .group-row:hover td {
+      background: #eef4f6;
+    }
+
+    .group-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .group-name {
+      color: var(--ink);
+      font-weight: 850;
+    }
+
+    .group-meta {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .track-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .track-name::before {
+      content: "";
+      width: 14px;
+      height: 1px;
+      background: #aab4c3;
+    }
+
     .mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-variant-numeric: tabular-nums;
@@ -730,13 +803,12 @@
       max-height: 100px;
       overflow: auto;
       border-top: 1px solid var(--line);
-      background: #202a36;
-      color: #475467;
+      background: var(--soft);
+      color: var(--muted);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
       padding: 10px 14px;
       white-space: pre-wrap;
-      color: #dce5ef;
     }
 
     .pill {
@@ -754,10 +826,15 @@
     .pill.warn { color: var(--warn); background: #fff3e5; }
     .pill.err { color: var(--danger); background: #fef0ef; }
 
+    #previewTable[data-ltc-visible="false"] .ltc-col {
+      display: none;
+    }
+
     @media (max-width: 980px) {
       header { align-items: flex-start; flex-direction: column; }
       .header-meta { justify-content: flex-start; }
       .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+      .ltc-tools { grid-column: 1 / -1; }
       .stats { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
       .calc-expression { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr); }
       .calc-equals, .calc-result, .calc-actions { grid-column: 1 / -1; }
@@ -767,6 +844,7 @@
     @media (max-width: 620px) {
       :root { --page-x: 14px; }
       .toolbar { grid-template-columns: 1fr; }
+      .ltc-actions { grid-template-columns: 1fr; }
       .stats { grid-template-columns: 1fr; }
       .calc-expression { grid-template-columns: 1fr; }
       .calc-operator { width: 100%; }
@@ -1022,6 +1100,14 @@
       <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
       <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
       <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
+
+      <div class="ltc-tools" aria-label="extract timecode from audio waveform">
+        <div class="ltc-tools-title">从波形提取时码</div>
+        <div class="ltc-actions">
+          <button id="extractLtcBtn" type="button" disabled>从音频波形提取时码</button>
+          <button id="writeLtcBtn" class="danger" type="button" disabled>将LTC写入文件时码</button>
+        </div>
+      </div>
     </section>
 
     <main>
@@ -1052,6 +1138,8 @@
                 <th>新结束</th>
                 <th>原始 TimeReference</th>
                 <th>新 TimeReference</th>
+                <th class="ltc-col">LTC读取时码</th>
+                <th class="ltc-col">LTC检测状态</th>
                 <th>时长</th>
                 <th>结果</th>
               </tr>
@@ -1119,6 +1207,8 @@
       previewBtn: document.getElementById("previewBtn"),
       applyBtn: document.getElementById("applyBtn"),
       undoBtn: document.getElementById("undoBtn"),
+      extractLtcBtn: document.getElementById("extractLtcBtn"),
+      writeLtcBtn: document.getElementById("writeLtcBtn"),
       fileCount: document.getElementById("fileCount"),
       offsetFrames: document.getElementById("offsetFrames"),
       offsetSamples: document.getElementById("offsetSamples"),
@@ -1149,6 +1239,38 @@
     let activeOffset = null;
     let calculatorOffset = null;
     let lastUndoBatch = null;
+    let ltcResults = new Map();
+
+    function recordKey(record) {
+      return record.relativePath || record.name;
+    }
+
+    function recordLabel(record) {
+      return record.relativePath || record.name;
+    }
+
+    function groupKey(record) {
+      return record.parentPath || recordKey(record);
+    }
+
+    function groupLabel(record) {
+      return record.parentPath || recordLabel(record);
+    }
+
+    function shortGroupLabel(key) {
+      const parts = key.split("/").filter(Boolean);
+      return parts[parts.length - 1] || key || "根目录";
+    }
+
+    function recordsByGroup() {
+      const groups = new Map();
+      for (const record of records) {
+        const key = groupKey(record);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(record);
+      }
+      return groups;
+    }
 
     function initCustomSelect(select, button, menu) {
       const field = select.closest("[data-select]");
@@ -1569,7 +1691,7 @@
       return new DataView(await blob.arrayBuffer());
     }
 
-    async function scanWave(fileHandle) {
+    async function scanWave(fileHandle, meta = {}) {
       const file = await fileHandle.getFile();
       const header = await readDataView(file, 0, Math.min(file.size, 12));
       const name = file.name;
@@ -1583,8 +1705,10 @@
       let channels = null;
       let bitsPerSample = null;
       let blockAlign = null;
+      let audioFormat = null;
       let timeReferenceOffset = null;
       let oldTimeReference = null;
+      let dataOffset = null;
       let dataSize = null;
 
       while (pos + 8 <= Math.min(file.size, riffSize + 8)) {
@@ -1597,6 +1721,7 @@
         if (chunkId === "fmt ") {
           if (chunkSize < 16) throw new Error(`${name}: fmt chunk 过短`);
           const fmt = await readDataView(file, chunkStart, Math.min(chunkSize, 40));
+          audioFormat = fmt.getUint16(0, LITTLE);
           channels = fmt.getUint16(2, LITTLE);
           sampleRate = fmt.getUint32(4, LITTLE);
           blockAlign = fmt.getUint16(12, LITTLE);
@@ -1607,6 +1732,7 @@
           const timeReference = await readDataView(file, timeReferenceOffset, 8);
           oldTimeReference = timeReference.getBigUint64(0, LITTLE);
         } else if (chunkId === "data") {
+          dataOffset = chunkStart;
           dataSize = chunkSize;
           if (sampleRate !== null && oldTimeReference !== null) break;
         }
@@ -1616,19 +1742,24 @@
 
       if (sampleRate === null || blockAlign === null) throw new Error(`${name}: 缺少 fmt chunk`);
       if (oldTimeReference === null || timeReferenceOffset === null) throw new Error(`${name}: 缺少 BWF bext TimeReference`);
-      if (dataSize === null) throw new Error(`${name}: 缺少 data chunk`);
+      if (dataSize === null || dataOffset === null) throw new Error(`${name}: 缺少 data chunk`);
       if (dataSize % blockAlign !== 0) throw new Error(`${name}: data chunk 未按 block align 对齐`);
 
       return {
         fileHandle,
         file,
         name,
+        relativePath: meta.relativePath || name,
+        parentPath: meta.parentPath || "",
         sampleRate,
         channels,
         bitsPerSample,
         blockAlign,
+        audioFormat,
         timeReferenceOffset,
         oldTimeReference,
+        dataOffset,
+        dataSize,
         durationSamples: BigInt(dataSize / blockAlign),
       };
     }
@@ -1639,6 +1770,169 @@
       const sub = frac(totalFrames.n - whole * totalFrames.d, totalFrames.d);
       const base = framesToTimecode(whole, fps);
       return sub.n === 0n ? base : `${base} + ${sub.n}/${sub.d}fr`;
+    }
+
+    function roundFrac(value) {
+      return value.n >= 0n
+        ? (value.n + value.d / 2n) / value.d
+        : -((-value.n + value.d / 2n) / value.d);
+    }
+
+    function framesToSamples(frames, sampleRate, fps) {
+      return roundFrac(mulFrac(divFrac(frac(frames), fpsRate(fps)), frac(BigInt(sampleRate))));
+    }
+
+    function readAudioSample(view, offset, record) {
+      const bytes = record.bitsPerSample / 8;
+      if (!Number.isInteger(bytes)) throw new Error(`${record.name}: 不支持 ${record.bitsPerSample} bit 音频`);
+      if (record.audioFormat === 3 && record.bitsPerSample === 32) return view.getFloat32(offset, LITTLE);
+      if (record.audioFormat !== 1 && record.audioFormat !== 65534) {
+        throw new Error(`${record.name}: 当前只支持 PCM / Extensible PCM WAV`);
+      }
+      if (record.bitsPerSample === 8) return (view.getUint8(offset) - 128) / 128;
+      if (record.bitsPerSample === 16) return view.getInt16(offset, LITTLE) / 32768;
+      if (record.bitsPerSample === 24) {
+        let value = view.getUint8(offset) | (view.getUint8(offset + 1) << 8) | (view.getUint8(offset + 2) << 16);
+        if (value & 0x800000) value |= 0xff000000;
+        return value / 8388608;
+      }
+      if (record.bitsPerSample === 32) return view.getInt32(offset, LITTLE) / 2147483648;
+      throw new Error(`${record.name}: 不支持 ${record.bitsPerSample} bit 音频`);
+    }
+
+    function ltcSyncMatches(bits, start) {
+      const patterns = [
+        "0011111111111101",
+        "1011111111111100",
+        "1011111111111100".split("").reverse().join(""),
+        "0011111111111101".split("").reverse().join(""),
+      ];
+      const segment = bits.slice(start + 64, start + 80).join("");
+      return patterns.includes(segment);
+    }
+
+    function parseLtcFrame(bits, fps) {
+      const value = indexes => indexes.reduce((sum, index, place) => sum + (bits[index] ? 2 ** place : 0), 0);
+      const ff = value([0, 1, 2, 3]) + value([8, 9]) * 10;
+      const ss = value([16, 17, 18, 19]) + value([24, 25, 26]) * 10;
+      const mm = value([32, 33, 34, 35]) + value([40, 41, 42]) * 10;
+      const hh = value([48, 49, 50, 51]) + value([56, 57]) * 10;
+      const nominal = Number(nominalFpsFor(fps));
+      if (hh > 23 || mm > 59 || ss > 59 || ff >= nominal) return null;
+      const sep = timecodeSeparator(fps);
+      const timecode = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${sep}${String(ff).padStart(frameDigitsFor(fps), "0")}`;
+      let frames;
+      try {
+        frames = timecodeToFrames(timecode, fps);
+      } catch (error) {
+        return null;
+      }
+      return {
+        timecode,
+        frames,
+        drop: Boolean(bits[10]),
+      };
+    }
+
+    function decodeLtcBits(edges, halfBitSamples) {
+      const bits = [];
+      const bitStarts = [];
+      for (let i = 0; i < edges.length - 1;) {
+        const interval = edges[i + 1] - edges[i];
+        const units = interval / halfBitSamples;
+        if (units > 0.55 && units < 1.45 && i + 2 < edges.length) {
+          const nextUnits = (edges[i + 2] - edges[i + 1]) / halfBitSamples;
+          if (nextUnits > 0.55 && nextUnits < 1.45) {
+            bits.push(1);
+            bitStarts.push(edges[i]);
+            i += 2;
+            continue;
+          }
+        }
+        if (units > 1.45 && units < 2.65) {
+          bits.push(0);
+          bitStarts.push(edges[i]);
+          i += 1;
+          continue;
+        }
+        i += 1;
+      }
+      return { bits, bitStarts };
+    }
+
+    async function detectLtcOnChannel(record, channelIndex, fps) {
+      const bytesPerSample = record.bitsPerSample / 8;
+      const sampleLimit = BigInt(Math.max(record.sampleRate * 20, record.sampleRate));
+      const maxSamples = Number(record.durationSamples < sampleLimit ? record.durationSamples : sampleLimit);
+      const bytesToRead = Math.min(record.dataSize, maxSamples * record.blockAlign);
+      const view = await readDataView(record.file, record.dataOffset, bytesToRead);
+      const samples = Math.floor(view.byteLength / record.blockAlign);
+      const channelByteOffset = channelIndex * bytesPerSample;
+      let peak = 0;
+
+      for (let i = 0; i < samples; i++) {
+        const sample = readAudioSample(view, i * record.blockAlign + channelByteOffset, record);
+        peak = Math.max(peak, Math.abs(sample));
+      }
+      if (peak < 0.05) return null;
+
+      const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
+      const halfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
+      const minEdgeDistance = Math.max(2, halfBitSamples * 0.45);
+      const threshold = Math.max(0.025, peak * 0.22);
+      const edges = [];
+      let sign = 0;
+      let lastEdge = -Infinity;
+
+      for (let i = 0; i < samples; i++) {
+        const sample = readAudioSample(view, i * record.blockAlign + channelByteOffset, record);
+        const nextSign = sample > threshold ? 1 : sample < -threshold ? -1 : sign;
+        if (sign && nextSign && nextSign !== sign && i - lastEdge >= minEdgeDistance) {
+          edges.push(i);
+          lastEdge = i;
+        }
+        sign = nextSign;
+      }
+
+      if (edges.length < 120) return null;
+      const decoded = decodeLtcBits(edges, halfBitSamples);
+      let best = null;
+
+      for (let start = 0; start + 80 <= decoded.bits.length; start++) {
+        const frameBits = decoded.bits.slice(start, start + 80);
+        const candidates = [frameBits, frameBits.slice().reverse()];
+        for (const candidateBits of candidates) {
+          if (!ltcSyncMatches(candidateBits, 0)) continue;
+          const frame = parseLtcFrame(candidateBits, fps);
+          if (!frame) continue;
+          const sampleOffset = Math.max(0, Math.round(decoded.bitStarts[start] || 0));
+          const tcSamples = framesToSamples(frame.frames, record.sampleRate, fps);
+          const newTimeReference = tcSamples - BigInt(sampleOffset);
+          if (newTimeReference < 0n) continue;
+          best = {
+            ...frame,
+            channelIndex,
+            channelLabel: `${channelIndex + 1}`,
+            sampleOffset,
+            newTimeReference,
+            confidence: Math.min(1, decoded.bits.length / 240),
+          };
+          break;
+        }
+        if (best) break;
+      }
+
+      return best;
+    }
+
+    async function detectLtc(record, fps) {
+      const results = [];
+      for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
+        const result = await detectLtcOnChannel(record, channelIndex, fps);
+        if (result) results.push(result);
+      }
+      results.sort((a, b) => b.confidence - a.confidence);
+      return results[0] || null;
     }
 
     function calculateTimecodeDifference() {
@@ -1698,7 +1992,7 @@
         "old_end_tc", "new_end_tc"
       ];
       const rows = previews.map(p => ({
-        file: p.name,
+        file: recordLabel(p),
         sample_rate: p.sampleRate,
         channels: p.channels,
         bits_per_sample: p.bitsPerSample,
@@ -1722,43 +2016,81 @@
       const sampleRates = new Set();
       const sampleOffsets = new Set();
       const fps = defaultDisplayFps();
-      const previewByName = new Map(previews.map(preview => [preview.name, preview]));
+      const previewByName = new Map(previews.map(preview => [recordKey(preview), preview]));
+      const showLtc = Array.from(ltcResults.values()).some(result => result.status !== "idle");
+      const groups = recordsByGroup();
 
-      for (const record of records) {
-        const preview = previewByName.get(record.name);
-        sampleRates.add(record.sampleRate);
-        if (preview) sampleOffsets.add(preview.sampleOffset.toString());
-        const row = document.createElement("tr");
-        const cells = [
-          record.name,
-          record.sampleRate,
-          record.channels,
-          record.bitsPerSample,
-          samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
-          preview ? preview.newStartTc : "待预览",
-          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
-          preview ? preview.newEndTc : "待预览",
-          record.oldTimeReference,
-          preview ? preview.newTimeReference : "待预览",
-          formatDuration(record.durationSamples, record.sampleRate),
-        ];
-        cells.forEach((cell, index) => {
+      for (const [key, groupRecords] of groups) {
+        if (groups.size > 1 || groupRecords.length > 1) {
+          const groupRow = document.createElement("tr");
+          groupRow.className = "group-row";
           const td = document.createElement("td");
-          td.textContent = String(cell);
-          if ([4, 5, 6, 7, 8, 9].includes(index)) td.classList.add("mono");
-          if (!preview && [5, 7, 9].includes(index)) td.classList.add("pending");
-          if (preview && [5, 7, 9].includes(index)) td.classList.add("new-value");
-          row.appendChild(td);
-        });
-        const result = document.createElement("td");
-        const pill = document.createElement("span");
-        pill.className = preview ? "pill ok" : "pill idle";
-        pill.textContent = preview ? "Ready" : "Original";
-        result.appendChild(pill);
-        row.appendChild(result);
-        els.previewBody.appendChild(row);
+          td.colSpan = 14;
+          const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
+          td.innerHTML = "";
+          const title = document.createElement("span");
+          title.className = "group-title";
+          const name = document.createElement("span");
+          name.className = "group-name";
+          name.textContent = shortGroupLabel(key);
+          const meta = document.createElement("span");
+          meta.className = "group-meta";
+          meta.textContent = `${groupRecords.length} 个分轨${detected ? ` · LTC ${detected.timecode} · ${detected.sourceRecord?.name || "已检测"}` : ""}`;
+          title.append(name, meta);
+          td.appendChild(title);
+          groupRow.appendChild(td);
+          els.previewBody.appendChild(groupRow);
+        }
+
+        for (const record of groupRecords) {
+          const preview = previewByName.get(recordKey(record));
+          const ltc = ltcResults.get(recordKey(record));
+          sampleRates.add(record.sampleRate);
+          if (preview) sampleOffsets.add(preview.sampleOffset.toString());
+          const row = document.createElement("tr");
+          const cells = [
+            recordLabel(record),
+            record.sampleRate,
+            record.channels,
+            record.bitsPerSample,
+            samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
+            preview ? preview.newStartTc : "待预览",
+            samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
+            preview ? preview.newEndTc : "待预览",
+            record.oldTimeReference,
+            preview ? preview.newTimeReference : "待预览",
+            ltc?.timecode || "待检测",
+            ltc ? ltc.statusText : "待检测",
+            formatDuration(record.durationSamples, record.sampleRate),
+          ];
+          cells.forEach((cell, index) => {
+            const td = document.createElement("td");
+            if (index === 0 && groupRecords.length > 1) {
+              const name = document.createElement("span");
+              name.className = "track-name";
+              name.textContent = record.name;
+              td.appendChild(name);
+            } else {
+              td.textContent = String(cell);
+            }
+            if ([4, 5, 6, 7, 8, 9, 10].includes(index)) td.classList.add("mono");
+            if (!preview && [5, 7, 9].includes(index)) td.classList.add("pending");
+            if (preview && [5, 7, 9].includes(index)) td.classList.add("new-value");
+            if ([10, 11].includes(index)) td.classList.add("ltc-col");
+            if (index === 10 && (!ltc || !ltc.timecode)) td.classList.add("pending");
+            row.appendChild(td);
+          });
+          const result = document.createElement("td");
+          const pill = document.createElement("span");
+          pill.className = preview ? "pill ok" : "pill idle";
+          pill.textContent = preview ? "Ready" : "Original";
+          result.appendChild(pill);
+          row.appendChild(result);
+          els.previewBody.appendChild(row);
+        }
       }
 
+      els.previewTable.dataset.ltcVisible = String(showLtc);
       els.previewTable.hidden = records.length === 0;
       els.emptyState.hidden = records.length > 0;
       els.fileCount.textContent = records.length;
@@ -1766,6 +2098,8 @@
       els.offsetSamples.textContent = sampleOffsets.size ? Array.from(sampleOffsets).join(", ") : "-";
       els.sampleRates.textContent = sampleRates.size ? Array.from(sampleRates).join(", ") : "-";
       els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
+      els.extractLtcBtn.disabled = records.length === 0;
+      els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(result => result.ok);
     }
 
     async function runPreview() {
@@ -1784,7 +2118,7 @@
         const sampleOffset = samplesForRate(offset, record.sampleRate);
         const newTimeReference = record.oldTimeReference + sampleOffset;
         if (newTimeReference < 0n) {
-          throw new Error(`${record.name}: 减去该偏移后 TimeReference 会小于 0`);
+          throw new Error(`${recordLabel(record)}: 减去该偏移后 TimeReference 会小于 0`);
         }
         const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps);
         const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps);
@@ -1830,6 +2164,81 @@
       return handle.name;
     }
 
+    async function extractLtcFromFiles() {
+      if (!records.length) throw new Error("请先拖入 WAV 文件");
+      const fps = parseFps(els.fpsInput.value);
+      const groups = Array.from(recordsByGroup().entries());
+      ltcResults = new Map();
+      els.writeLtcBtn.disabled = true;
+      setState("LTC检测中", "warn");
+      els.statusLine.textContent = "正在按 take 文件夹从音频波形读取 LTC...";
+      updateWriteProgress("正在检测 LTC…", "", 0, groups.length);
+      els.progressOverlay.classList.add("show");
+
+      try {
+        for (let i = 0; i < groups.length; i++) {
+          const [takeKey, groupRecords] = groups[i];
+          updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i, groups.length);
+          let detected = null;
+          let detectError = null;
+
+          try {
+            for (const record of groupRecords) {
+              const result = await detectLtc(record, fps);
+              if (result) {
+                detected = { ...result, sourceRecord: record, groupKey: takeKey };
+                break;
+              }
+            }
+          } catch (error) {
+            detectError = error;
+          }
+
+          if (detected) {
+            for (const record of groupRecords) {
+              const isSource = recordKey(record) === recordKey(detected.sourceRecord);
+              ltcResults.set(recordKey(record), {
+                ...detected,
+                record,
+                ok: true,
+                status: "ok",
+                timecode: detected.timecode,
+                statusText: isSource
+                  ? `检测到：${detected.sourceRecord.name} 第 ${detected.channelLabel} 轨`
+                  : `同take：来自 ${detected.sourceRecord.name}`,
+              });
+            }
+            log(`LTC OK: ${groupLabel(groupRecords[0])} -> ${detected.timecode}, source ${detected.sourceRecord.name}`);
+          } else {
+            for (const record of groupRecords) {
+              ltcResults.set(recordKey(record), {
+                ok: false,
+                status: detectError ? "err" : "warn",
+                statusText: detectError ? detectError.message : "本take未检测到 LTC",
+              });
+            }
+            log(detectError
+              ? `LTC ERROR: ${groupLabel(groupRecords[0])}: ${detectError.message}`
+              : `LTC MISS: ${groupLabel(groupRecords[0])}`);
+          }
+
+          updateWriteProgress("正在检测 LTC…", takeKey || "根目录", i + 1, groups.length);
+          renderRows();
+        }
+
+        const okGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok).map(result => result.groupKey));
+        const okFiles = Array.from(ltcResults.values()).filter(result => result.ok).length;
+        setState(okGroups.size ? "LTC可写入" : "未检测到LTC", okGroups.size ? "ok" : "warn");
+        els.statusLine.textContent = okGroups.size
+          ? `已检测到 ${okGroups.size} 个 take 的 LTC；将写入 ${okFiles} 个 WAV`
+          : "没有检测到可写入的 LTC";
+        renderRows();
+      } finally {
+        els.progressOverlay.classList.remove("show");
+        updateWriteProgress("正在写入…", "", 0, groups.length || 1);
+      }
+    }
+
     async function writeTimeReference(preview, value) {
       const patch = new ArrayBuffer(8);
       new DataView(patch).setBigUint64(0, value, LITTLE);
@@ -1838,8 +2247,124 @@
       await writable.close();
     }
 
+    function writeSilenceSample(view, offset, record) {
+      if (record.bitsPerSample === 8 && record.audioFormat === 1) {
+        view.setUint8(offset, 128);
+        return;
+      }
+      const bytes = record.bitsPerSample / 8;
+      for (let i = 0; i < bytes; i++) view.setUint8(offset + i, 0);
+    }
+
+    async function muteLtcChannel(record, channelIndex, writable, progressBase, progressTotal) {
+      const bytesPerSample = record.bitsPerSample / 8;
+      if (!Number.isInteger(bytesPerSample)) throw new Error(`${record.name}: 不支持 ${record.bitsPerSample} bit 静音`);
+      const framesPerChunk = Math.max(1, Math.floor((4 * 1024 * 1024) / record.blockAlign));
+      const channelByteOffset = channelIndex * bytesPerSample;
+      let framesDone = 0n;
+
+      while (framesDone < record.durationSamples) {
+        const framesLeft = record.durationSamples - framesDone;
+        const framesThisChunk = Number(framesLeft < BigInt(framesPerChunk) ? framesLeft : BigInt(framesPerChunk));
+        const position = record.dataOffset + Number(framesDone) * record.blockAlign;
+        const bytesToRead = framesThisChunk * record.blockAlign;
+        const view = await readDataView(record.file, position, bytesToRead);
+
+        for (let frame = 0; frame < framesThisChunk; frame++) {
+          writeSilenceSample(view, frame * record.blockAlign + channelByteOffset, record);
+        }
+
+        await writable.write({ type: "write", position, data: view.buffer });
+        framesDone += BigInt(framesThisChunk);
+        const recordProgress = Number(framesDone) / Number(record.durationSamples);
+        updateWriteProgress("正在静音 LTC 轨…", recordLabel(record), progressBase + recordProgress, progressTotal);
+      }
+    }
+
+    async function writeLtcTimecode() {
+      const writableItems = records
+        .map(record => ({ record, ltc: ltcResults.get(recordKey(record)) }))
+        .filter(item => item.ltc?.ok);
+      if (!writableItems.length) throw new Error("没有可写入的 LTC 识别结果");
+
+      const ok = await confirmWriteChanges(writableItems.length, true);
+      if (!ok) return;
+
+      setState("LTC写入中", "warn");
+      els.writeLtcBtn.disabled = true;
+      els.extractLtcBtn.disabled = true;
+      els.undoBtn.disabled = true;
+      els.statusLine.textContent = "Writing LTC timecode...";
+      updateWriteProgress("正在写入 LTC…", "", 0, writableItems.length);
+      els.progressOverlay.classList.add("show");
+
+      const undoBatch = writableItems.map(({ record }) => ({
+        fileHandle: record.fileHandle,
+        name: record.name,
+        relativePath: record.relativePath,
+        parentPath: record.parentPath,
+        timeReferenceOffset: record.timeReferenceOffset,
+        oldTimeReference: record.oldTimeReference,
+      }));
+
+      try {
+        for (let i = 0; i < writableItems.length; i++) {
+          const { record, ltc } = writableItems[i];
+          const isSource = recordKey(record) === recordKey(ltc.sourceRecord);
+          updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
+          const writable = await record.fileHandle.createWritable({ keepExistingData: true });
+          try {
+            const patch = new ArrayBuffer(8);
+            new DataView(patch).setBigUint64(0, ltc.newTimeReference, LITTLE);
+            await writable.write({ type: "write", position: record.timeReferenceOffset, data: patch });
+            if (isSource) {
+              await muteLtcChannel(record, ltc.channelIndex, writable, i + 0.2, writableItems.length);
+            }
+          } finally {
+            await writable.close();
+          }
+          ltc.ok = false;
+          ltc.status = "ok";
+          ltc.statusText = isSource
+            ? `已写入；第 ${ltc.channelLabel} 轨已静音`
+            : `已写入；LTC来自 ${ltc.sourceRecord.name}`;
+          updateWriteProgress("正在写入 LTC…", record.name, i + 1, writableItems.length);
+        }
+
+        updateWriteProgress("正在校验…", "校验 LTC 写入结果", writableItems.length, writableItems.length);
+        for (const { record, ltc } of writableItems) {
+          const fresh = await scanWave(record.fileHandle);
+          if (fresh.oldTimeReference !== ltc.newTimeReference) {
+            throw new Error(`${recordLabel(record)}: LTC 写入校验失败`);
+          }
+        }
+
+        lastUndoBatch = undoBatch;
+        els.undoBtn.disabled = false;
+        previews = [];
+        activeOffset = null;
+        await refreshRecordsFromHandles();
+        renderRows();
+        setState("完成");
+        els.statusLine.textContent = `LTC 写入完成：${writableItems.length} 个文件`;
+        log(`LTC Write OK: ${writableItems.length} files`);
+        els.toast.textContent = `✅ LTC 写入完成 — ${writableItems.length} 个文件`;
+        els.toast.classList.add("show");
+        setTimeout(() => els.toast.classList.remove("show"), 4500);
+      } finally {
+        els.progressOverlay.classList.remove("show");
+        updateWriteProgress("正在写入…", "", 0, writableItems.length || 1);
+        els.extractLtcBtn.disabled = records.length === 0;
+        els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(result => result.ok);
+        els.undoBtn.disabled = !lastUndoBatch;
+      }
+    }
+
     async function refreshRecordsFromHandles() {
-      records = await Promise.all(records.map(record => scanWave(record.fileHandle)));
+      records = await Promise.all(records.map(record => scanWave(record.fileHandle, {
+        relativePath: record.relativePath,
+        parentPath: record.parentPath,
+      })));
     }
 
     function updateWriteProgress(label, fileText, done, total) {
@@ -1851,7 +2376,7 @@
       els.progressPct.textContent = `${percent}%`;
     }
 
-    function confirmWriteChanges(count) {
+    function confirmWriteChanges(count, includesLtcMute = false) {
       return new Promise(resolve => {
         const previousFocus = document.activeElement;
         let settled = false;
@@ -1883,10 +2408,15 @@
           }
         }
 
-        els.confirmCopy.innerHTML = [
-          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
-          "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
-        ].join("<br>");
+        els.confirmCopy.innerHTML = includesLtcMute
+          ? [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
+            "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
+          ].join("<br>")
+          : [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
+            "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
+          ].join("<br>");
         els.confirmOverlay.classList.add("show");
         els.confirmOverlay.setAttribute("aria-hidden", "false");
         els.confirmCancelBtn.addEventListener("click", onCancel);
@@ -2083,6 +2613,8 @@
     els.previewBtn.addEventListener("click", () => guarded(runPreview));
     els.applyBtn.addEventListener("click", () => guarded(applyChanges));
     els.undoBtn.addEventListener("click", () => guarded(undoLastWrite));
+    els.extractLtcBtn.addEventListener("click", () => guarded(extractLtcFromFiles));
+    els.writeLtcBtn.addEventListener("click", () => guarded(writeLtcTimecode));
     els.calcBtn.addEventListener("click", () => guarded(calculateTimecodeDifference));
     els.useCalcBtn.addEventListener("click", () => guarded(useCalculatorResult));
     els.calcOpBtn.addEventListener("click", toggleCalculatorOperator);
@@ -2186,17 +2718,31 @@
       els.previewBtn.disabled = true;
     }
 
+    async function addDirectory(handle, basePath = handle.name) {
+      const entries = [];
+      for await (const entry of handle.values()) entries.push(entry);
+      entries.sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      for (const entry of entries) {
+        const relativePath = `${basePath}/${entry.name}`;
+        if (entry.kind === "directory") {
+          await addDirectory(entry, relativePath);
+        } else if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) {
+          records.push(await scanWave(entry, {
+            relativePath,
+            parentPath: basePath,
+          }));
+        }
+      }
+    }
+
     async function addHandle(handle) {
       if (handle.kind === "directory") {
         directoryHandle = handle;
-        const entries = [];
-        for await (const entry of handle.values()) {
-          if (entry.kind === "file" && WAV_SUFFIX.test(entry.name)) entries.push(entry);
-        }
-        entries.sort((a, b) => a.name.localeCompare(b.name));
-        for (const entry of entries) {
-          records.push(await scanWave(entry));
-        }
+        await addDirectory(handle);
       } else if (handle.kind === "file" && WAV_SUFFIX.test(handle.name)) {
         records.push(await scanWave(handle));
       }
@@ -2216,10 +2762,13 @@
       }
       if (records.length > count) {
         lastUndoBatch = null;
+        ltcResults = new Map();
         els.undoBtn.disabled = true;
         els.previewBtn.disabled = false;
+        els.extractLtcBtn.disabled = false;
+        els.writeLtcBtn.disabled = true;
         setState("已载入");
-        els.statusLine.textContent = `已载入 ${records.length} 个 WAV；输入偏移后点击预览`;
+        els.statusLine.textContent = `已载入 ${records.length} 个 WAV，${recordsByGroup().size} 个 take；输入偏移后点击预览`;
         renderRows();
         log(`Dropped ${records.length - count} WAV file(s)`);
       }
