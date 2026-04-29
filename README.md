@@ -1,20 +1,118 @@
-# AudioTCChange
+# Audio TC Change
 
-A local-first PWA for batch viewing and updating BWF WAV `bext TimeReference` metadata.
+## 中文
 
-## Features
+Audio TC Change 是一个给现场录音文件修时间码的小工具。它在浏览器里运行，文件留在本机，适合在交剪辑前快速检查和批量修正 WAV/BWF 文件的起始时间码。
 
-- Select a local folder and scan WAV/BWF files in the browser.
-- Preview original start/end timecode before making changes.
-- Apply positive or negative offsets at common frame rates.
-- Edit timecode with a fixed `HH:MM:SS:FF` input, per-frame steppers, and arrow-key digit stepping.
-- Write only the 8-byte BWF `TimeReference` field with `keepExistingData: true`.
-- Export a `timecode_fix_manifest_*.csv` report after writing.
-- Installable PWA with offline caching.
+### 它解决什么问题
 
-## Use Locally
+现场录音有时会遇到这些情况：
 
-Serve the folder over HTTP. Browsers do not allow PWA install/service workers from `file://`.
+- 录音机的时间码整体偏移了几秒、几分钟，甚至几个小时。
+- 某一天或某一批素材的音频时间码和画面时间码对不上。
+- 录音机没有接入 timecode input，只录下了 LTC 音频轨。
+- 分轨 WAV 文件很多，需要按 take 一起处理。
+- 剪辑软件读取的时间码和声音软件读取的时间码不一致。
+
+这个工具的目标很简单：**让一批 WAV/BWF 文件的起始时间码变成你想要的时间。**
+
+### 主要功能
+
+- 批量载入文件夹里的 WAV/BWF 文件。
+- 查看每个文件当前的起始和结束时间码。
+- 输入正负偏移，批量把时间码提前或延后。
+- 从两个时间码计算偏移量，减少手算错误。
+- 从音频波形里检测 LTC，并把检测到的时间写回文件。
+- 对 ZOOM H 系列这类分轨文件按 take 分组显示。
+- 写入前预览结果，写入后生成 CSV 修改清单。
+- 支持撤销上一次写入。
+
+### 关于兼容性
+
+工具会修正 BWF/WAV 文件里用于定位起始时间的元数据。对于同时带有 BWF 和 iXML 时间信息的文件，写入时会尽量保持两边一致，避免不同软件读到不同的起始时间码。
+
+常见来源包括：
+
+- ZOOM F6
+- ZOOM H6 / H 系列分轨文件
+- Sound Devices MixPre 系列
+- 其他写入 BWF/iXML 元数据的录音机
+
+### 使用方式
+
+建议用 Chrome 或 Edge 打开，因为写回本地文件需要浏览器的 File System Access API。
+
+在项目目录下启动本地服务：
+
+```bash
+python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8765/
+```
+
+### 建议流程
+
+1. 先复制一份素材或确认已有备份。
+2. 载入音频文件夹。
+3. 选择正确帧率。
+4. 用时间码计算器或手动输入偏移量。
+5. 点击预览，确认新起始时间码。
+6. 写入。
+7. 把生成的 CSV 清单和修正后的音频一起交给后期。
+
+### 注意
+
+这个工具会直接修改 WAV 文件元数据。正式素材建议先备份，或先在一小批文件上测试剪辑软件兼容性。
+
+---
+
+## English
+
+Audio TC Change is a small browser-based tool for fixing timecode metadata in production audio files. It runs locally in the browser and is designed for checking and batch-correcting WAV/BWF start timecode before handoff to editorial.
+
+### Problems It Solves
+
+Production audio can run into situations like:
+
+- The recorder timecode is offset by seconds, minutes, or hours.
+- A whole shoot day or batch of audio does not line up with picture.
+- The recorder had no timecode input and only recorded LTC as an audio track.
+- Split-track WAV files need to be handled by take.
+- Editing software and audio tools show different start timecodes.
+
+The goal is simple: **make a batch of WAV/BWF files start at the correct timecode.**
+
+### Features
+
+- Load a folder of WAV/BWF files.
+- Inspect original start and end timecode.
+- Apply positive or negative offsets in batch.
+- Calculate offsets from two timecodes.
+- Detect LTC from audio waveform and write it back as file timecode.
+- Group split-track takes from recorders such as the ZOOM H series.
+- Preview before writing and export a CSV manifest after writing.
+- Undo the previous write operation.
+
+### Compatibility
+
+The tool updates the metadata used by WAV/BWF files to describe their start time. For files that contain both BWF and iXML time metadata, it keeps them synchronized so different applications are less likely to show conflicting start timecodes.
+
+Common recorder sources include:
+
+- ZOOM F6
+- ZOOM H6 / H-series split-track files
+- Sound Devices MixPre series
+- Other recorders that write BWF/iXML metadata
+
+### Run Locally
+
+Chrome or Edge is recommended because writing local files requires the File System Access API.
+
+From the project directory:
 
 ```bash
 python3 -m http.server 8765 --bind 127.0.0.1
@@ -26,8 +124,16 @@ Open:
 http://127.0.0.1:8765/
 ```
 
-Use Chrome or Edge for the File System Access API required to write WAV metadata.
+### Suggested Workflow
 
-## Deploy With GitHub Pages
+1. Work on a copy or make sure the source audio is backed up.
+2. Load the audio folder.
+3. Choose the correct frame rate.
+4. Enter an offset manually or calculate it from two timecodes.
+5. Preview the new start timecode.
+6. Write changes.
+7. Deliver the generated CSV manifest with the corrected audio.
 
-Enable Pages for the repository from `Settings -> Pages`, using the `main` branch and root folder. The app can then be shared as a normal HTTPS link and installed from the browser.
+### Note
+
+This tool directly modifies WAV metadata. For production material, test a small batch in the target editing software before processing everything.

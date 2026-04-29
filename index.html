@@ -1240,6 +1240,7 @@
     let calculatorOffset = null;
     let lastUndoBatch = null;
     let ltcResults = new Map();
+    let takeGroupKeys = new Set();
 
     function recordKey(record) {
       return record.relativePath || record.name;
@@ -1250,16 +1251,61 @@
     }
 
     function groupKey(record) {
-      return record.parentPath || recordKey(record);
+      if (!record.parentPath) return recordKey(record);
+      return takeGroupKeys.has(record.parentPath) ? record.parentPath : recordKey(record);
     }
 
     function groupLabel(record) {
-      return record.parentPath || recordLabel(record);
+      return takeGroupKeys.has(record.parentPath) ? record.parentPath : recordLabel(record);
     }
 
     function shortGroupLabel(key) {
       const parts = key.split("/").filter(Boolean);
       return parts[parts.length - 1] || key || "根目录";
+    }
+
+    function hasZoomHNamePattern(record) {
+      if (!record.parentPath) return false;
+      const parent = shortGroupLabel(record.parentPath);
+      return new RegExp(`^${parent}_Tr\\d+\\.wav$`, "i").test(record.name) || /(?:^|[_-])Tr\d+\.wav$/i.test(record.name);
+    }
+
+    function detectTakeGroupKeys(recordList) {
+      const folders = new Map();
+      for (const record of recordList) {
+        if (!record.parentPath) continue;
+        if (!folders.has(record.parentPath)) folders.set(record.parentPath, []);
+        folders.get(record.parentPath).push(record);
+      }
+
+      const keys = new Set();
+      for (const [folder, group] of folders) {
+        if (group.length < 2) continue;
+        if (!group.every(record => record.channels === 1)) continue;
+
+        const sampleRates = new Set(group.map(record => record.sampleRate));
+        const bits = new Set(group.map(record => record.bitsPerSample));
+        const formats = new Set(group.map(record => record.audioFormat));
+        if (sampleRates.size !== 1 || bits.size !== 1 || formats.size !== 1) continue;
+
+        const durations = group.map(record => Number(record.durationSamples));
+        const minDuration = Math.min(...durations);
+        const maxDuration = Math.max(...durations);
+        const durationTolerance = Math.max(group[0].sampleRate * 2, maxDuration * 0.01);
+        const sameTakeDuration = maxDuration - minDuration <= durationTolerance;
+        const hasTrackNames = group.some(hasZoomHNamePattern);
+
+        if (sameTakeDuration || hasTrackNames) keys.add(folder);
+      }
+      return keys;
+    }
+
+    function refreshTakeGroups() {
+      takeGroupKeys = detectTakeGroupKeys(records);
+    }
+
+    function isTakeTrack(record) {
+      return Boolean(record.parentPath && takeGroupKeys.has(record.parentPath));
     }
 
     function recordsByGroup() {
@@ -1691,6 +1737,59 @@
       return new DataView(await blob.arrayBuffer());
     }
 
+    function asciiFromView(view, pos, len) {
+      let out = "";
+      for (let i = 0; i < len; i++) out += String.fromCharCode(view.getUint8(pos + i));
+      return out;
+    }
+
+    function findAsciiInView(view, pattern, from = 0) {
+      const codes = Array.from(pattern, c => c.charCodeAt(0));
+      const limit = view.byteLength - codes.length;
+      for (let i = from; i <= limit; i++) {
+        let ok = true;
+        for (let j = 0; j < codes.length; j++) {
+          if (view.getUint8(i + j) !== codes[j]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return i;
+      }
+      return -1;
+    }
+
+    function readIxmlField(view, chunkStart, tag) {
+      const openTag = `<${tag}>`;
+      const closeTag = `</${tag}>`;
+      const open = findAsciiInView(view, openTag);
+      if (open < 0) return null;
+      const valueStart = open + openTag.length;
+      const close = findAsciiInView(view, closeTag, valueStart);
+      if (close < 0) return null;
+      const raw = asciiFromView(view, valueStart, close - valueStart);
+      return {
+        position: chunkStart + valueStart,
+        length: close - valueStart,
+        raw,
+        value: raw.trim(),
+      };
+    }
+
+    function parseIxmlInfo(view, chunkStart, chunkSize) {
+      const timestampHi = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI");
+      const timestampLo = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO");
+      const timestampSampleRate = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLE_RATE");
+      if (!timestampHi && !timestampLo && !timestampSampleRate) return null;
+      return {
+        chunkStart,
+        chunkSize,
+        timestampHi,
+        timestampLo,
+        timestampSampleRate,
+      };
+    }
+
     async function scanWave(fileHandle, meta = {}) {
       const file = await fileHandle.getFile();
       const header = await readDataView(file, 0, Math.min(file.size, 12));
@@ -1708,6 +1807,7 @@
       let audioFormat = null;
       let timeReferenceOffset = null;
       let oldTimeReference = null;
+      let ixmlInfo = null;
       let dataOffset = null;
       let dataSize = null;
 
@@ -1731,10 +1831,12 @@
           timeReferenceOffset = chunkStart + 338;
           const timeReference = await readDataView(file, timeReferenceOffset, 8);
           oldTimeReference = timeReference.getBigUint64(0, LITTLE);
+        } else if (chunkId === "iXML") {
+          const ixml = await readDataView(file, chunkStart, chunkSize);
+          ixmlInfo = parseIxmlInfo(ixml, chunkStart, chunkSize);
         } else if (chunkId === "data") {
           dataOffset = chunkStart;
           dataSize = chunkSize;
-          if (sampleRate !== null && oldTimeReference !== null) break;
         }
 
         pos = chunkStart + chunkSize + (chunkSize & 1);
@@ -1758,6 +1860,7 @@
         audioFormat,
         timeReferenceOffset,
         oldTimeReference,
+        ixmlInfo,
         dataOffset,
         dataSize,
         durationSamples: BigInt(dataSize / blockAlign),
@@ -1800,139 +1903,225 @@
       throw new Error(`${record.name}: 不支持 ${record.bitsPerSample} bit 音频`);
     }
 
-    function ltcSyncMatches(bits, start) {
-      const patterns = [
+    const LtcDecoder = {
+      syncWords: new Set([
         "0011111111111101",
         "1011111111111100",
-        "1011111111111100".split("").reverse().join(""),
-        "0011111111111101".split("").reverse().join(""),
-      ];
-      const segment = bits.slice(start + 64, start + 80).join("");
-      return patterns.includes(segment);
-    }
+      ]),
 
-    function parseLtcFrame(bits, fps) {
-      const value = indexes => indexes.reduce((sum, index, place) => sum + (bits[index] ? 2 ** place : 0), 0);
-      const ff = value([0, 1, 2, 3]) + value([8, 9]) * 10;
-      const ss = value([16, 17, 18, 19]) + value([24, 25, 26]) * 10;
-      const mm = value([32, 33, 34, 35]) + value([40, 41, 42]) * 10;
-      const hh = value([48, 49, 50, 51]) + value([56, 57]) * 10;
-      const nominal = Number(nominalFpsFor(fps));
-      if (hh > 23 || mm > 59 || ss > 59 || ff >= nominal) return null;
-      const sep = timecodeSeparator(fps);
-      const timecode = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${sep}${String(ff).padStart(frameDigitsFor(fps), "0")}`;
-      let frames;
-      try {
-        frames = timecodeToFrames(timecode, fps);
-      } catch (error) {
-        return null;
-      }
-      return {
-        timecode,
-        frames,
-        drop: Boolean(bits[10]),
-      };
-    }
+      async readChannel(record, channelIndex, scanSeconds = 60) {
+        const bytesPerSample = record.bitsPerSample / 8;
+        const sampleLimit = BigInt(Math.max(record.sampleRate * scanSeconds, record.sampleRate));
+        const maxSamples = Number(record.durationSamples < sampleLimit ? record.durationSamples : sampleLimit);
+        const bytesToRead = Math.min(record.dataSize, maxSamples * record.blockAlign);
+        const view = await readDataView(record.file, record.dataOffset, bytesToRead);
+        const samples = Math.floor(view.byteLength / record.blockAlign);
+        const channelByteOffset = channelIndex * bytesPerSample;
+        const data = new Float32Array(samples);
+        let min = Infinity;
+        let max = -Infinity;
+        let sumSquares = 0;
 
-    function decodeLtcBits(edges, halfBitSamples) {
-      const bits = [];
-      const bitStarts = [];
-      for (let i = 0; i < edges.length - 1;) {
-        const interval = edges[i + 1] - edges[i];
-        const units = interval / halfBitSamples;
-        if (units > 0.55 && units < 1.45 && i + 2 < edges.length) {
-          const nextUnits = (edges[i + 2] - edges[i + 1]) / halfBitSamples;
-          if (nextUnits > 0.55 && nextUnits < 1.45) {
-            bits.push(1);
+        for (let i = 0; i < samples; i++) {
+          const sample = readAudioSample(view, i * record.blockAlign + channelByteOffset, record);
+          data[i] = sample;
+          min = Math.min(min, sample);
+          max = Math.max(max, sample);
+          sumSquares += sample * sample;
+        }
+
+        const peak = Math.max(Math.abs(min), Math.abs(max));
+        const p2p = max - min;
+        const rms = Math.sqrt(sumSquares / Math.max(1, samples));
+        return { data, min, max, peak, p2p, rms };
+      },
+
+      findEdges(channel, expectedHalfBitSamples) {
+        if (channel.peak < 0.035 || channel.p2p < 0.07) return [];
+        const center = (channel.max + channel.min) / 2;
+        const hysteresis = Math.max(channel.p2p * 0.08, channel.rms * 0.18, 0.006);
+        const minEdgeDistance = Math.max(2, expectedHalfBitSamples * 0.35);
+        const edges = [];
+        let state = channel.data[0] >= center ? 1 : -1;
+        let lastEdge = -Infinity;
+
+        for (let i = 1; i < channel.data.length; i++) {
+          const sample = channel.data[i];
+          const upper = center + hysteresis;
+          const lower = center - hysteresis;
+          const nextState = sample > upper ? 1 : sample < lower ? -1 : state;
+          if (nextState !== state && i - lastEdge >= minEdgeDistance) {
+            const prev = channel.data[i - 1];
+            const denom = sample - prev;
+            const crossing = denom === 0 ? i : (i - 1) + (center - prev) / denom;
+            edges.push(crossing);
+            lastEdge = crossing;
+          }
+          state = nextState;
+        }
+
+        return edges;
+      },
+
+      decodeBits(edges, expectedHalfBitSamples) {
+        const bits = [];
+        const bitStarts = [];
+        const bitEnds = [];
+        let half = expectedHalfBitSamples;
+        let rejected = 0;
+
+        for (let i = 0; i < edges.length - 1;) {
+          const interval = edges[i + 1] - edges[i];
+          const units = interval / half;
+
+          if (units > 0.55 && units < 1.45 && i + 2 < edges.length) {
+            const nextInterval = edges[i + 2] - edges[i + 1];
+            const nextUnits = nextInterval / half;
+            if (nextUnits > 0.55 && nextUnits < 1.45) {
+              bits.push(1);
+              bitStarts.push(edges[i]);
+              bitEnds.push(edges[i + 2]);
+              half = half * 0.85 + ((interval + nextInterval) / 2) * 0.15;
+              i += 2;
+              continue;
+            }
+          }
+
+          if (units > 1.45 && units < 2.7) {
+            bits.push(0);
             bitStarts.push(edges[i]);
-            i += 2;
+            bitEnds.push(edges[i + 1]);
+            half = half * 0.9 + (interval / 2) * 0.1;
+            i += 1;
             continue;
           }
-        }
-        if (units > 1.45 && units < 2.65) {
-          bits.push(0);
-          bitStarts.push(edges[i]);
+
+          rejected++;
           i += 1;
-          continue;
         }
-        i += 1;
-      }
-      return { bits, bitStarts };
-    }
 
-    async function detectLtcOnChannel(record, channelIndex, fps) {
-      const bytesPerSample = record.bitsPerSample / 8;
-      const sampleLimit = BigInt(Math.max(record.sampleRate * 20, record.sampleRate));
-      const maxSamples = Number(record.durationSamples < sampleLimit ? record.durationSamples : sampleLimit);
-      const bytesToRead = Math.min(record.dataSize, maxSamples * record.blockAlign);
-      const view = await readDataView(record.file, record.dataOffset, bytesToRead);
-      const samples = Math.floor(view.byteLength / record.blockAlign);
-      const channelByteOffset = channelIndex * bytesPerSample;
-      let peak = 0;
+        return { bits, bitStarts, bitEnds, rejected, trackedHalfBitSamples: half };
+      },
 
-      for (let i = 0; i < samples; i++) {
-        const sample = readAudioSample(view, i * record.blockAlign + channelByteOffset, record);
-        peak = Math.max(peak, Math.abs(sample));
-      }
-      if (peak < 0.05) return null;
+      hasSync(bits) {
+        return this.syncWords.has(bits.slice(64, 80).join(""));
+      },
 
-      const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
-      const halfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
-      const minEdgeDistance = Math.max(2, halfBitSamples * 0.45);
-      const threshold = Math.max(0.025, peak * 0.22);
-      const edges = [];
-      let sign = 0;
-      let lastEdge = -Infinity;
-
-      for (let i = 0; i < samples; i++) {
-        const sample = readAudioSample(view, i * record.blockAlign + channelByteOffset, record);
-        const nextSign = sample > threshold ? 1 : sample < -threshold ? -1 : sign;
-        if (sign && nextSign && nextSign !== sign && i - lastEdge >= minEdgeDistance) {
-          edges.push(i);
-          lastEdge = i;
+      parseFrame(bits, fps) {
+        const value = indexes => indexes.reduce((sum, index, place) => sum + (bits[index] ? 2 ** place : 0), 0);
+        const ff = value([0, 1, 2, 3]) + value([8, 9]) * 10;
+        const ss = value([16, 17, 18, 19]) + value([24, 25, 26]) * 10;
+        const mm = value([32, 33, 34, 35]) + value([40, 41, 42]) * 10;
+        const hh = value([48, 49, 50, 51]) + value([56, 57]) * 10;
+        const nominal = Number(nominalFpsFor(fps));
+        if (hh > 23 || mm > 59 || ss > 59 || ff >= nominal) return null;
+        const sep = timecodeSeparator(fps);
+        const timecode = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${sep}${String(ff).padStart(frameDigitsFor(fps), "0")}`;
+        try {
+          return { timecode, frames: timecodeToFrames(timecode, fps), drop: Boolean(bits[10]) };
+        } catch (error) {
+          return null;
         }
-        sign = nextSign;
-      }
+      },
 
-      if (edges.length < 120) return null;
-      const decoded = decodeLtcBits(edges, halfBitSamples);
-      let best = null;
+      frameAt(decoded, start, fps, reverse = false) {
+        if (start < 0 || start + 80 > decoded.bits.length) return null;
+        const bits = decoded.bits.slice(start, start + 80);
+        const candidateBits = reverse ? bits.slice().reverse() : bits;
+        if (!this.hasSync(candidateBits)) return null;
+        const frame = this.parseFrame(candidateBits, fps);
+        if (!frame) return null;
+        return {
+          ...frame,
+          bitStart: start,
+          sampleStart: decoded.bitStarts[start],
+          sampleEnd: decoded.bitEnds[start + 79],
+          reverse,
+        };
+      },
 
-      for (let start = 0; start + 80 <= decoded.bits.length; start++) {
-        const frameBits = decoded.bits.slice(start, start + 80);
-        const candidates = [frameBits, frameBits.slice().reverse()];
-        for (const candidateBits of candidates) {
-          if (!ltcSyncMatches(candidateBits, 0)) continue;
-          const frame = parseLtcFrame(candidateBits, fps);
-          if (!frame) continue;
-          const sampleOffset = Math.max(0, Math.round(decoded.bitStarts[start] || 0));
-          const tcSamples = framesToSamples(frame.frames, record.sampleRate, fps);
-          const newTimeReference = tcSamples - BigInt(sampleOffset);
-          if (newTimeReference < 0n) continue;
-          best = {
-            ...frame,
-            channelIndex,
-            channelLabel: `${channelIndex + 1}`,
-            sampleOffset,
-            newTimeReference,
-            confidence: Math.min(1, decoded.bits.length / 240),
-          };
-          break;
+      consecutiveRun(decoded, start, fps, reverse = false) {
+        const frames = [];
+        for (let offset = 0; offset < 8; offset++) {
+          const bitStart = start + offset * 80;
+          const frame = this.frameAt(decoded, bitStart, fps, reverse);
+          if (!frame) break;
+          if (frames.length) {
+            const expected = reverse ? frames[frames.length - 1].frames - 1n : frames[frames.length - 1].frames + 1n;
+            if (frame.frames !== expected) break;
+          }
+          frames.push(frame);
         }
-        if (best) break;
-      }
+        return frames;
+      },
 
-      return best;
-    }
+      chooseCandidate(decoded, record, fps, stats) {
+        let best = null;
+        for (let start = 0; start + 80 <= decoded.bits.length; start++) {
+          for (const reverse of [false, true]) {
+            const run = this.consecutiveRun(decoded, start, fps, reverse);
+            if (run.length < 2) continue;
+            const first = run[0];
+            const sampleOffset = Math.max(0, Math.round(first.sampleStart || 0));
+            const tcSamples = framesToSamples(first.frames, record.sampleRate, fps);
+            const newTimeReference = tcSamples - BigInt(sampleOffset);
+            if (newTimeReference < 0n) continue;
+            const lockScore = Math.min(1, run.length / 4);
+            const edgeScore = Math.min(1, decoded.bits.length / 320);
+            const rejectPenalty = decoded.rejected / Math.max(1, decoded.rejected + decoded.bits.length);
+            const levelScore = Math.min(1, stats.p2p / 0.6);
+            const confidence = Math.max(0, Math.min(1, lockScore * 0.45 + edgeScore * 0.25 + levelScore * 0.2 - rejectPenalty * 0.25 + 0.1));
+            const candidate = {
+              ...first,
+              sampleOffset,
+              newTimeReference,
+              confidence,
+              lockedFrames: run.length,
+              reverse,
+              diagnostics: {
+                peak: stats.peak,
+                rms: stats.rms,
+                p2p: stats.p2p,
+                decodedBits: decoded.bits.length,
+                rejectedEdges: decoded.rejected,
+                trackedHalfBitSamples: decoded.trackedHalfBitSamples,
+              },
+            };
+            if (!best || candidate.confidence > best.confidence || candidate.lockedFrames > best.lockedFrames) best = candidate;
+          }
+        }
+        return best;
+      },
+
+      async detectOnChannel(record, channelIndex, fps) {
+        const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
+        const expectedHalfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
+        const channel = await this.readChannel(record, channelIndex);
+        const edges = this.findEdges(channel, expectedHalfBitSamples);
+        if (edges.length < 160) return null;
+        const decoded = this.decodeBits(edges, expectedHalfBitSamples);
+        const best = this.chooseCandidate(decoded, record, fps, channel);
+        if (!best) return null;
+        return {
+          ...best,
+          channelIndex,
+          channelLabel: `${channelIndex + 1}`,
+        };
+      },
+
+      async detect(record, fps) {
+        const results = [];
+        for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
+          const result = await this.detectOnChannel(record, channelIndex, fps);
+          if (result) results.push(result);
+        }
+        results.sort((a, b) => b.confidence - a.confidence);
+        return results[0] || null;
+      },
+    };
 
     async function detectLtc(record, fps) {
-      const results = [];
-      for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
-        const result = await detectLtcOnChannel(record, channelIndex, fps);
-        if (result) results.push(result);
-      }
-      results.sort((a, b) => b.confidence - a.confidence);
-      return results[0] || null;
+      return LtcDecoder.detect(record, fps);
     }
 
     function calculateTimecodeDifference() {
@@ -2021,7 +2210,8 @@
       const groups = recordsByGroup();
 
       for (const [key, groupRecords] of groups) {
-        if (groups.size > 1 || groupRecords.length > 1) {
+        const isTrackGroup = groupRecords.length > 1 && groupRecords.every(isTakeTrack);
+        if (isTrackGroup) {
           const groupRow = document.createElement("tr");
           groupRow.className = "group-row";
           const td = document.createElement("td");
@@ -2065,7 +2255,7 @@
           ];
           cells.forEach((cell, index) => {
             const td = document.createElement("td");
-            if (index === 0 && groupRecords.length > 1) {
+            if (index === 0 && isTrackGroup) {
               const name = document.createElement("span");
               name.className = "track-name";
               name.textContent = record.name;
@@ -2204,11 +2394,11 @@
                 status: "ok",
                 timecode: detected.timecode,
                 statusText: isSource
-                  ? `检测到：${detected.sourceRecord.name} 第 ${detected.channelLabel} 轨`
-                  : `同take：来自 ${detected.sourceRecord.name}`,
+                  ? `检测到：${detected.sourceRecord.name} 第 ${detected.channelLabel} 轨 · 连续${detected.lockedFrames}帧 · ${Math.round(detected.confidence * 100)}%`
+                  : `同take：来自 ${detected.sourceRecord.name} · ${Math.round(detected.confidence * 100)}%`,
               });
             }
-            log(`LTC OK: ${groupLabel(groupRecords[0])} -> ${detected.timecode}, source ${detected.sourceRecord.name}`);
+            log(`LTC OK: ${groupLabel(groupRecords[0])} -> ${detected.timecode}, source ${detected.sourceRecord.name}, ${detected.lockedFrames} frames, confidence ${Math.round(detected.confidence * 100)}%`);
           } else {
             for (const record of groupRecords) {
               ltcResults.set(recordKey(record), {
@@ -2239,12 +2429,70 @@
       }
     }
 
-    async function writeTimeReference(preview, value) {
+    function paddedDecimal(value, length, label) {
+      const text = value.toString();
+      if (text.length > length) throw new Error(`${label} 超出 iXML 字段宽度：${text.length}/${length}`);
+      return text.padStart(length, "0");
+    }
+
+    function ixmlTimestampParts(value) {
+      const base = 4294967296n;
+      return {
+        hi: value / base,
+        lo: value % base,
+      };
+    }
+
+    async function writeAsciiAt(writable, position, text) {
+      const data = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) data[i] = text.charCodeAt(i);
+      await writable.write({ type: "write", position, data });
+    }
+
+    async function writeIxmlTimeReference(record, value, writable) {
+      if (!record.ixmlInfo) return false;
+      const { timestampHi, timestampLo, timestampSampleRate } = record.ixmlInfo;
+      const parts = ixmlTimestampParts(value);
+      let wrote = false;
+
+      if (timestampHi) {
+        await writeAsciiAt(writable, timestampHi.position, paddedDecimal(parts.hi, timestampHi.length, `${record.name} iXML timestamp HI`));
+        wrote = true;
+      }
+      if (timestampLo) {
+        await writeAsciiAt(writable, timestampLo.position, paddedDecimal(parts.lo, timestampLo.length, `${record.name} iXML timestamp LO`));
+        wrote = true;
+      }
+      if (timestampSampleRate) {
+        await writeAsciiAt(writable, timestampSampleRate.position, paddedDecimal(BigInt(record.sampleRate), timestampSampleRate.length, `${record.name} iXML timestamp sample rate`));
+        wrote = true;
+      }
+      return wrote;
+    }
+
+    async function writeTimeReference(preview, value, writable = null) {
       const patch = new ArrayBuffer(8);
       new DataView(patch).setBigUint64(0, value, LITTLE);
-      const writable = await preview.fileHandle.createWritable({ keepExistingData: true });
-      await writable.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
-      await writable.close();
+      const ownWritable = !writable;
+      const target = writable || await preview.fileHandle.createWritable({ keepExistingData: true });
+      try {
+        await target.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
+        await writeIxmlTimeReference(preview, value, target);
+      } finally {
+        if (ownWritable) await target.close();
+      }
+    }
+
+    function ixmlTimeReferenceValue(ixmlInfo) {
+      if (!ixmlInfo?.timestampHi || !ixmlInfo?.timestampLo) return null;
+      return BigInt(ixmlInfo.timestampHi.value || "0") * 4294967296n + BigInt(ixmlInfo.timestampLo.value || "0");
+    }
+
+    function verifyIxmlTimeReference(record, expected, label) {
+      const ixmlValue = ixmlTimeReferenceValue(record.ixmlInfo);
+      if (ixmlValue !== null && ixmlValue !== expected) {
+        throw new Error(`${label}: iXML TimeReference 校验失败`);
+      }
     }
 
     function writeSilenceSample(view, offset, record) {
@@ -2303,8 +2551,10 @@
         name: record.name,
         relativePath: record.relativePath,
         parentPath: record.parentPath,
+        sampleRate: record.sampleRate,
         timeReferenceOffset: record.timeReferenceOffset,
         oldTimeReference: record.oldTimeReference,
+        ixmlInfo: record.ixmlInfo,
       }));
 
       try {
@@ -2314,9 +2564,7 @@
           updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
           const writable = await record.fileHandle.createWritable({ keepExistingData: true });
           try {
-            const patch = new ArrayBuffer(8);
-            new DataView(patch).setBigUint64(0, ltc.newTimeReference, LITTLE);
-            await writable.write({ type: "write", position: record.timeReferenceOffset, data: patch });
+            await writeTimeReference(record, ltc.newTimeReference, writable);
             if (isSource) {
               await muteLtcChannel(record, ltc.channelIndex, writable, i + 0.2, writableItems.length);
             }
@@ -2337,6 +2585,7 @@
           if (fresh.oldTimeReference !== ltc.newTimeReference) {
             throw new Error(`${recordLabel(record)}: LTC 写入校验失败`);
           }
+          verifyIxmlTimeReference(fresh, ltc.newTimeReference, recordLabel(record));
         }
 
         lastUndoBatch = undoBatch;
@@ -2365,6 +2614,7 @@
         relativePath: record.relativePath,
         parentPath: record.parentPath,
       })));
+      refreshTakeGroups();
     }
 
     function updateWriteProgress(label, fileText, done, total) {
@@ -2438,8 +2688,10 @@
       const undoBatch = previews.map(preview => ({
         fileHandle: preview.fileHandle,
         name: preview.name,
+        sampleRate: preview.sampleRate,
         timeReferenceOffset: preview.timeReferenceOffset,
         oldTimeReference: preview.oldTimeReference,
+        ixmlInfo: preview.ixmlInfo,
       }));
 
       updateWriteProgress("正在写入…", "", 0, previews.length);
@@ -2460,6 +2712,7 @@
           if (fresh.oldTimeReference !== preview.newTimeReference) {
             throw new Error(`${preview.name}: 校验失败`);
           }
+          verifyIxmlTimeReference(fresh, preview.newTimeReference, preview.name);
         }
 
         let manifestName = null;
@@ -2517,6 +2770,7 @@
           if (fresh.oldTimeReference !== item.oldTimeReference) {
             throw new Error(`${item.name}: 撤销校验失败`);
           }
+          verifyIxmlTimeReference(fresh, item.oldTimeReference, item.name);
         }
 
         lastUndoBatch = null;
@@ -2763,12 +3017,14 @@
       if (records.length > count) {
         lastUndoBatch = null;
         ltcResults = new Map();
+        refreshTakeGroups();
         els.undoBtn.disabled = true;
         els.previewBtn.disabled = false;
         els.extractLtcBtn.disabled = false;
         els.writeLtcBtn.disabled = true;
         setState("已载入");
-        els.statusLine.textContent = `已载入 ${records.length} 个 WAV，${recordsByGroup().size} 个 take；输入偏移后点击预览`;
+        const takeText = takeGroupKeys.size ? `，识别到 ${takeGroupKeys.size} 个分轨 take` : "";
+        els.statusLine.textContent = `已载入 ${records.length} 个 WAV${takeText}；输入偏移后点击预览`;
         renderRows();
         log(`Dropped ${records.length - count} WAV file(s)`);
       }
