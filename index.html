@@ -1317,6 +1317,22 @@
       return new RegExp(`^${parent}_Tr\\d+\\.wav$`, "i").test(record.name) || /(?:^|[_-])Tr\d+\.wav$/i.test(record.name);
     }
 
+    function ltcScanPriority(record) {
+      const name = record.name || "";
+      if (record.channels === 1 && hasZoomHNamePattern(record)) return 0;
+      if (record.channels === 1) return 1;
+      if (/_LR\.wav$/i.test(name)) return 3;
+      return 2;
+    }
+
+    function ltcScanRecords(groupRecords) {
+      return [...groupRecords].sort((a, b) => {
+        const priority = ltcScanPriority(a) - ltcScanPriority(b);
+        if (priority) return priority;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+    }
+
     function detectTakeGroupKeys(recordList) {
       const folders = new Map();
       for (const record of recordList) {
@@ -2155,6 +2171,40 @@
         return windows;
       },
 
+      quickRejectChannel(channel, sampleRate) {
+        if (channel.peak < 0.035 || channel.p2p < 0.07) return { reject: true, reason: "level" };
+        const windowSamples = channel.data.length;
+        if (windowSamples < sampleRate) return { reject: false, reason: "short" };
+        const stats = this.channelStats(channel.data, 0, windowSamples);
+        if (stats.peak < 0.035 || stats.p2p < 0.07) return { reject: true, reason: "window-level" };
+        const center = (stats.max + stats.min) / 2;
+        const hysteresis = Math.max(stats.p2p * 0.06, stats.rms * 0.14, 0.004);
+        let intervals = 0;
+        let plausible = 0;
+        const minHalf = sampleRate / (120 * 80 * 2) * 0.45;
+        const maxHalf = sampleRate / (23.976 * 80 * 2) * 2.4;
+        let state = channel.data[0] >= center ? 1 : -1;
+        let lastEdge = null;
+        for (let i = 1; i < windowSamples; i++) {
+          const sample = channel.data[i];
+          const nextState = sample > center + hysteresis ? 1 : sample < center - hysteresis ? -1 : state;
+          if (nextState !== state) {
+            if (lastEdge !== null) {
+              const interval = i - lastEdge;
+              intervals++;
+              if (interval >= minHalf && interval <= maxHalf) plausible++;
+            }
+            lastEdge = i;
+          }
+          state = nextState;
+        }
+        if (intervals < 120) return { reject: true, reason: "few-edges" };
+        if (plausible < 100 || plausible / intervals < 0.35) {
+          return { reject: true, reason: "aperiodic" };
+        }
+        return { reject: false, reason: "plausible", edges: plausible };
+      },
+
       findEdges(channel, expectedHalfBitSamples) {
         if (channel.peak < 0.035 || channel.p2p < 0.07) return [];
         const center = (channel.max + channel.min) / 2;
@@ -2420,9 +2470,19 @@
           ...this.candidateFpsValues().filter(value => value !== preferredValue),
         ];
         const results = [];
+        const rejectedChannels = [];
 
         for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
           const channel = await this.readChannel(record, channelIndex);
+          const quick = this.quickRejectChannel(channel, record.sampleRate);
+          if (quick.reject) {
+            rejectedChannels.push({
+              channelIndex,
+              channelLabel: `${channelIndex + 1}`,
+              rejectReason: quick.reason,
+            });
+            continue;
+          }
           for (const value of values) {
             const fps = parseFps(value);
             const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
@@ -2457,6 +2517,7 @@
           best: results[0] || null,
           preferred: results.find(result => result.fpsValue === preferredValue) || null,
           results,
+          rejectedChannels,
         };
       },
     };
@@ -2736,7 +2797,7 @@
             let detectError = null;
 
             try {
-              for (const record of groupRecords) {
+              for (const record of ltcScanRecords(groupRecords)) {
                 const auto = await detectLtcAuto(record, fps);
                 let result = auto.best?.fpsValue === fpsValue ? auto.best : auto.preferred;
 
