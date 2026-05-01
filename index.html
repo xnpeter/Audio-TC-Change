@@ -710,7 +710,7 @@
       width: 100%;
       border-collapse: separate;
       border-spacing: 0;
-      min-width: 1260px;
+      min-width: 1340px;
       font-size: 13px;
     }
 
@@ -790,6 +790,24 @@
     .new-value {
       color: var(--accent-strong);
       font-weight: 750;
+    }
+
+    .fps-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #f2f4f7;
+      color: #475467;
+    }
+
+    .fps-badge.ixml {
+      background: #ecfdf3;
+      color: #087443;
+      border: 1px solid #abefc6;
     }
 
     .ltc-value-ok {
@@ -1177,9 +1195,10 @@
                 <th>采样率</th>
                 <th>声道</th>
                 <th>位深</th>
-                <th>原始起始</th>
+                <th>FPS</th>
+                <th>文件起始TC</th>
                 <th>新起始</th>
-                <th>原始结束</th>
+                <th>文件结束TC</th>
                 <th>新结束</th>
                 <th>原始 TimeReference</th>
                 <th>新 TimeReference</th>
@@ -1288,6 +1307,7 @@
     let lastUndoBatch = null;
     let ltcResults = new Map();
     let takeGroupKeys = new Set();
+    let changedTimeReferences = new Map();
 
     function recordKey(record) {
       return record.relativePath || record.name;
@@ -1667,6 +1687,22 @@
         total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
         all: sorted,
       };
+    }
+
+    function recordFpsValue(record) {
+      return ixmlRateToFpsValue(record.ixmlInfo) || els.fpsInput.value;
+    }
+
+    function recordFps(record) {
+      return parseFps(recordFpsValue(record));
+    }
+
+    function recordFpsSource(record) {
+      return ixmlRateToFpsValue(record.ixmlInfo) ? "iXML" : "界面设置";
+    }
+
+    function recordFpsDisplay(record) {
+      return `${fpsSelectLabel(recordFpsValue(record))} · ${recordFpsSource(record)}`;
     }
 
     function setFpsValue(value) {
@@ -3186,17 +3222,18 @@
 
     function manifestCsv() {
       const headers = [
-        "file", "sample_rate", "channels", "bits_per_sample", "time_reference_offset_byte",
+        "file", "sample_rate", "channels", "bits_per_sample", "fps", "fps_source", "time_reference_offset_byte",
         "offset_tc", "offset_frames", "offset_samples", "old_time_reference",
         "new_time_reference", "duration_samples", "old_start_tc", "new_start_tc",
         "old_end_tc", "new_end_tc"
       ];
-      const fps = defaultDisplayFps();
       const rows = previews.map(p => ({
         file: recordLabel(p),
         sample_rate: p.sampleRate,
         channels: p.channels,
         bits_per_sample: p.bitsPerSample,
+        fps: fpsSelectLabel(p.fpsValue || recordFpsValue(p)),
+        fps_source: p.fpsSource || recordFpsSource(p),
         time_reference_offset_byte: p.timeReferenceOffset,
         offset_tc: p.offset.label,
         offset_frames: p.offset.frames,
@@ -3204,10 +3241,10 @@
         old_time_reference: p.oldTimeReference,
         new_time_reference: p.newTimeReference,
         duration_samples: p.durationSamples,
-        old_start_tc: samplesToTimecode(p.oldTimeReference, p.sampleRate, fps),
-        new_start_tc: samplesToTimecode(p.newTimeReference, p.sampleRate, fps),
-        old_end_tc: samplesToTimecode(p.oldTimeReference + p.durationSamples, p.sampleRate, fps),
-        new_end_tc: samplesToTimecode(p.newTimeReference + p.durationSamples, p.sampleRate, fps),
+        old_start_tc: samplesToTimecode(p.oldTimeReference, p.sampleRate, p.fps || recordFps(p)),
+        new_start_tc: samplesToTimecode(p.newTimeReference, p.sampleRate, p.fps || recordFps(p)),
+        old_end_tc: samplesToTimecode(p.oldTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p)),
+        new_end_tc: samplesToTimecode(p.newTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p)),
       }));
       return [headers.join(","), ...rows.map(row => headers.map(h => toCsvValue(row[h])).join(","))].join("\n");
     }
@@ -3216,7 +3253,7 @@
       els.previewBody.textContent = "";
       const sampleRates = new Set();
       const sampleOffsets = new Set();
-      const fps = defaultDisplayFps();
+      const fallbackFps = defaultDisplayFps();
       const previewByName = new Map(previews.map(preview => [recordKey(preview), preview]));
       const showLtc = Array.from(ltcResults.values()).some(result => result.status !== "idle");
       const groups = recordsByGroup();
@@ -3227,7 +3264,7 @@
           const groupRow = document.createElement("tr");
           groupRow.className = "group-row";
           const td = document.createElement("td");
-          td.colSpan = 14;
+          td.colSpan = 15;
           const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
           const detectedRecord = detected?.record || groupRecords[0];
           const detectedStartTc = detected ? ltcStartTimecode(detected, detectedRecord) : "";
@@ -3249,6 +3286,9 @@
         for (const record of groupRecords) {
           const preview = previewByName.get(recordKey(record));
           const ltc = ltcResults.get(recordKey(record));
+          const fps = preview?.fps || recordFps(record);
+          const fpsSource = preview?.fpsSource || recordFpsSource(record);
+          const recordWasChanged = changedTimeReferences.get(recordKey(record)) === record.oldTimeReference;
           sampleRates.add(record.sampleRate);
           if (preview) sampleOffsets.add(preview.sampleOffset.toString());
           const row = document.createElement("tr");
@@ -3257,6 +3297,7 @@
             record.sampleRate,
             record.channels,
             record.bitsPerSample,
+            preview?.fpsDisplay || recordFpsDisplay(record),
             samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
             preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate, fps) : "待预览",
             samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
@@ -3264,7 +3305,7 @@
             record.oldTimeReference,
             preview ? preview.newTimeReference : "待预览",
             ltc ? ltcStartTimecode(ltc, record) : "待检测",
-            ltc ? ltcStatusText(ltc, record, fps) : "待检测",
+            ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测",
             formatDuration(record.durationSamples, record.sampleRate),
           ];
           cells.forEach((cell, index) => {
@@ -3274,21 +3315,27 @@
               name.className = "track-name";
               name.textContent = record.name;
               td.appendChild(name);
+            } else if (index === 4) {
+              const badge = document.createElement("span");
+              badge.className = `fps-badge${fpsSource === "iXML" ? " ixml" : ""}`;
+              badge.textContent = String(cell);
+              td.appendChild(badge);
             } else {
               td.textContent = String(cell);
             }
-            if ([4, 5, 6, 7, 8, 9, 10].includes(index)) td.classList.add("mono");
-            if (!preview && [5, 7, 9].includes(index)) td.classList.add("pending");
-            if (preview && [5, 7, 9].includes(index)) td.classList.add("new-value");
-            if ([10, 11].includes(index)) td.classList.add("ltc-col");
-            if (index === 10 && (!ltc || !ltc.timecode)) td.classList.add("pending");
-            if (index === 10 && ltc?.ok) td.classList.add("ltc-value-ok");
+            if ([5, 6, 7, 8, 9, 10, 11].includes(index)) td.classList.add("mono");
+            if (!preview && [6, 8, 10].includes(index)) td.classList.add("pending");
+            if (preview && [6, 8, 10].includes(index)) td.classList.add("new-value");
+            if (!preview && recordWasChanged && [5, 7].includes(index)) td.classList.add("ltc-value-ok");
+            if ([11, 12].includes(index)) td.classList.add("ltc-col");
+            if (index === 11 && (!ltc || !ltc.timecode)) td.classList.add("pending");
+            if (index === 11 && (ltc?.ok || ltc?.status === "ok")) td.classList.add("ltc-value-ok");
             row.appendChild(td);
           });
           const result = document.createElement("td");
           const pill = document.createElement("span");
-          pill.className = preview ? "pill ok" : "pill idle";
-          pill.textContent = preview ? "Ready" : "Original";
+          pill.className = preview || recordWasChanged ? "pill ok" : "pill idle";
+          pill.textContent = preview ? "Ready" : (recordWasChanged ? "已更改" : "Original");
           result.appendChild(pill);
           row.appendChild(result);
           els.previewBody.appendChild(row);
@@ -3315,11 +3362,15 @@
       setState("预览中", "warn");
       els.statusLine.textContent = "Calculating shifted timecode...";
 
-      const fps = parseFps(els.fpsInput.value);
-      const offset = parseOffset(els.offsetInput.value, fps);
+      const fallbackFps = parseFps(els.fpsInput.value);
       if (!records.length) throw new Error("请拖入文件夹或音频文件");
 
+      let firstOffset = null;
       for (const record of records) {
+        const fpsValue = recordFpsValue(record);
+        const fps = parseFps(fpsValue);
+        const offset = parseOffset(els.offsetInput.value, fps);
+        if (!firstOffset) firstOffset = offset;
         const sampleOffset = samplesForRate(offset, record.sampleRate);
         const newTimeReference = record.oldTimeReference + sampleOffset;
         if (newTimeReference < 0n) {
@@ -3333,6 +3384,10 @@
           ...record,
           offset,
           sampleOffset,
+          fps,
+          fpsValue,
+          fpsSource: recordFpsSource(record),
+          fpsDisplay: recordFpsDisplay(record),
           newTimeReference,
           oldStartTc,
           newStartTc,
@@ -3342,12 +3397,12 @@
         });
       }
 
-      activeOffset = offset;
+      activeOffset = firstOffset;
       renderRows();
       els.applyBtn.disabled = false;
       setState("可写入");
       els.statusLine.textContent = `${previews.length} 个文件已生成修改预览`;
-      log(`Preview OK: ${previews.length} files, offset ${offset.label}, ${offset.frames} frames`);
+      log(`Preview OK: ${previews.length} files, per-file FPS from iXML where available, UI fallback ${fpsLabel(fallbackFps)}`);
     }
 
     async function writeManifestToFolder() {
@@ -3550,6 +3605,10 @@
       return text.padStart(length, "0");
     }
 
+    function decimalFits(value, length) {
+      return value.toString().length <= length;
+    }
+
     function ixmlTimestampParts(value) {
       const base = 4294967296n;
       return {
@@ -3562,6 +3621,131 @@
       const data = new Uint8Array(text.length);
       for (let i = 0; i < text.length; i++) data[i] = text.charCodeAt(i);
       await writable.write({ type: "write", position, data });
+    }
+
+    function ixmlNeedsRewrite(record, value) {
+      if (!record.ixmlInfo) return false;
+      const { timestampHi, timestampLo, timestampSampleRate } = record.ixmlInfo;
+      const parts = ixmlTimestampParts(value);
+      return Boolean(
+        (timestampHi && !decimalFits(parts.hi, timestampHi.length)) ||
+        (timestampLo && !decimalFits(parts.lo, timestampLo.length)) ||
+        (timestampSampleRate && !decimalFits(BigInt(record.sampleRate), timestampSampleRate.length))
+      );
+    }
+
+    function replaceIxmlFieldText(xml, tag, value) {
+      const pattern = new RegExp(`(<${tag}>)[\\s\\S]*?(</${tag}>)`);
+      return xml.replace(pattern, `$1${value}$2`);
+    }
+
+    function rewriteIxmlChunkText(xml, record, value, targetIxmlInfo = record.ixmlInfo) {
+      const parts = ixmlTimestampParts(value);
+      const targetValue = ixmlTimeReferenceValue(targetIxmlInfo);
+      const restoreTargetRaw = targetValue === value;
+      let next = xml;
+      if (record.ixmlInfo?.timestampHi || targetIxmlInfo?.timestampHi) {
+        const text = restoreTargetRaw && targetIxmlInfo?.timestampHi
+          ? targetIxmlInfo.timestampHi.raw
+          : parts.hi.toString();
+        next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI", text);
+      }
+      if (record.ixmlInfo?.timestampLo || targetIxmlInfo?.timestampLo) {
+        const text = restoreTargetRaw && targetIxmlInfo?.timestampLo
+          ? targetIxmlInfo.timestampLo.raw
+          : parts.lo.toString();
+        next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO", text);
+      }
+      if (record.ixmlInfo?.timestampSampleRate || targetIxmlInfo?.timestampSampleRate) {
+        const text = restoreTargetRaw && targetIxmlInfo?.timestampSampleRate
+          ? targetIxmlInfo.timestampSampleRate.raw
+          : String(record.sampleRate);
+        next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLE_RATE", text);
+      }
+      return next;
+    }
+
+    function ixmlFieldShape(info) {
+      if (!info) return "";
+      return [
+        info.timestampHi?.raw ?? "",
+        info.timestampLo?.raw ?? "",
+        info.timestampSampleRate?.raw ?? "",
+      ].join("\u0000");
+    }
+
+    function shouldRestoreIxmlShape(record, targetIxmlInfo, value) {
+      if (!record.ixmlInfo || !targetIxmlInfo) return false;
+      if (ixmlTimeReferenceValue(targetIxmlInfo) !== value) return false;
+      return ixmlFieldShape(record.ixmlInfo) !== ixmlFieldShape(targetIxmlInfo);
+    }
+
+    function chunkHeader(id, size) {
+      const header = new Uint8Array(8);
+      for (let i = 0; i < 4; i++) header[i] = id.charCodeAt(i);
+      new DataView(header.buffer).setUint32(4, size, LITTLE);
+      return header;
+    }
+
+    async function rewriteWaveTimeReference(record, value, writable, targetIxmlInfo = record.ixmlInfo) {
+      const file = await record.fileHandle.getFile();
+      const buffer = await file.arrayBuffer();
+      const view = new DataView(buffer);
+      if (view.byteLength < 12 || ascii(view, 0, 4) !== "RIFF" || ascii(view, 8, 4) !== "WAVE") {
+        throw new Error(`${record.name}: 不是 RIFF/WAVE 文件`);
+      }
+
+      const descriptors = [];
+      let pos = 12;
+      const limit = Math.min(view.byteLength, view.getUint32(4, LITTLE) + 8);
+      while (pos + 8 <= limit) {
+        const id = ascii(view, pos, 4);
+        const size = view.getUint32(pos + 4, LITTLE);
+        const start = pos + 8;
+        if (start + size > view.byteLength) throw new Error(`${record.name}: chunk 数据截断`);
+        let data = new Uint8Array(buffer, start, size);
+
+        if (id === "bext") {
+          if (size < 346) throw new Error(`${record.name}: bext chunk 过短`);
+          data = new Uint8Array(data);
+          new DataView(data.buffer, data.byteOffset, data.byteLength).setBigUint64(338, value, LITTLE);
+        } else if (id === "iXML" && record.ixmlInfo) {
+          const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(data);
+          data = new TextEncoder().encode(rewriteIxmlChunkText(xml, record, value, targetIxmlInfo));
+        }
+
+        descriptors.push({ id, data });
+        pos = start + size + (size & 1);
+      }
+
+      let riffSize = 4;
+      for (const descriptor of descriptors) {
+        riffSize += 8 + descriptor.data.byteLength + (descriptor.data.byteLength & 1);
+      }
+      if (riffSize > 0xffffffff) throw new Error(`${record.name}: 文件超过 RIFF 4GB 大小限制`);
+
+      const riffHeader = new Uint8Array(12);
+      riffHeader.set([82, 73, 70, 70], 0);
+      new DataView(riffHeader.buffer).setUint32(4, riffSize, LITTLE);
+      riffHeader.set([87, 65, 86, 69], 8);
+
+      let writePos = 0;
+      await writable.write({ type: "write", position: writePos, data: riffHeader });
+      writePos += riffHeader.byteLength;
+
+      const pad = new Uint8Array([0]);
+      for (const descriptor of descriptors) {
+        const header = chunkHeader(descriptor.id, descriptor.data.byteLength);
+        await writable.write({ type: "write", position: writePos, data: header });
+        writePos += header.byteLength;
+        await writable.write({ type: "write", position: writePos, data: descriptor.data });
+        writePos += descriptor.data.byteLength;
+        if (descriptor.data.byteLength & 1) {
+          await writable.write({ type: "write", position: writePos, data: pad });
+          writePos += 1;
+        }
+      }
+      await writable.truncate(writePos);
     }
 
     async function writeIxmlTimeReference(record, value, writable) {
@@ -3586,13 +3770,25 @@
     }
 
     async function writeTimeReference(preview, value, writable = null) {
+      const record = (!writable && preview.fileHandle)
+        ? await scanWave(preview.fileHandle, {
+          relativePath: preview.relativePath,
+          parentPath: preview.parentPath,
+        })
+        : preview;
       const patch = new ArrayBuffer(8);
       new DataView(patch).setBigUint64(0, value, LITTLE);
       const ownWritable = !writable;
-      const target = writable || await preview.fileHandle.createWritable({ keepExistingData: true });
+      const restoreShape = shouldRestoreIxmlShape(record, preview.ixmlInfo, value);
+      const needsRewrite = restoreShape || ixmlNeedsRewrite(record, value);
+      const target = writable || await record.fileHandle.createWritable({ keepExistingData: !needsRewrite });
       try {
-        await target.write({ type: "write", position: preview.timeReferenceOffset, data: patch });
-        await writeIxmlTimeReference(preview, value, target);
+        if (needsRewrite) {
+          await rewriteWaveTimeReference(record, value, target, restoreShape ? preview.ixmlInfo : record.ixmlInfo);
+        } else {
+          await target.write({ type: "write", position: record.timeReferenceOffset, data: patch });
+          await writeIxmlTimeReference(record, value, target);
+        }
       } finally {
         if (ownWritable) await target.close();
       }
@@ -3677,14 +3873,18 @@
           const { record, ltc } = writableItems[i];
           const isSource = recordKey(record) === recordKey(ltc.sourceRecord);
           updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
-          const writable = await record.fileHandle.createWritable({ keepExistingData: true });
-          try {
-            await writeTimeReference(record, ltc.newTimeReference, writable);
-            if (isSource) {
-              await muteLtcChannel(record, ltc.channelIndex, writable, i + 0.2, writableItems.length);
+          await writeTimeReference(record, ltc.newTimeReference);
+          if (isSource) {
+            const freshForMute = await scanWave(record.fileHandle, {
+              relativePath: record.relativePath,
+              parentPath: record.parentPath,
+            });
+            const writable = await record.fileHandle.createWritable({ keepExistingData: true });
+            try {
+              await muteLtcChannel(freshForMute, ltc.channelIndex, writable, i + 0.2, writableItems.length);
+            } finally {
+              await writable.close();
             }
-          } finally {
-            await writable.close();
           }
           ltc.ok = false;
           ltc.status = "ok";
@@ -3707,6 +3907,7 @@
         els.undoBtn.disabled = false;
         previews = [];
         activeOffset = null;
+        changedTimeReferences = new Map(writableItems.map(({ record, ltc }) => [recordKey(record), ltc.newTimeReference]));
         await refreshRecordsFromHandles();
         renderRows();
         setState("完成");
@@ -3825,7 +4026,7 @@
         copy: [
           `当前界面设置是 <strong>${fpsSelectLabel(currentValue)}</strong>。`,
           `导入文件的 iXML 元数据里有 <strong>${metadata.count}/${metadata.total}</strong> 个文件记录为 <strong>${fpsSelectLabel(metadata.value)}</strong>。`,
-          "请选择继续使用当前设置，还是切换到文件元数据记录的帧率。"
+          "预览会优先按每个文件的 iXML 帧率计算；界面设置只用于没有 iXML 帧率的文件和输入格式。"
         ].join("<br>"),
       });
     }
@@ -3930,6 +4131,7 @@
         lastUndoBatch = null;
         previews = [];
         activeOffset = null;
+        changedTimeReferences = new Map();
         await refreshRecordsFromHandles();
         renderRows();
         setState("已撤销");
@@ -4165,6 +4367,7 @@
       if (records.length <= count) return;
       lastUndoBatch = null;
       ltcResults = new Map();
+      if (count === 0) changedTimeReferences = new Map();
       refreshTakeGroups();
       els.undoBtn.disabled = true;
       els.previewBtn.disabled = false;
