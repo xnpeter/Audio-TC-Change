@@ -3852,6 +3852,7 @@
       setState("LTC写入中", "warn");
       els.writeLtcBtn.disabled = true;
       els.extractLtcBtn.disabled = true;
+      els.applyBtn.disabled = true;
       els.undoBtn.disabled = true;
       els.statusLine.textContent = "Writing LTC timecode...";
       updateWriteProgress("正在写入 LTC…", "", 0, writableItems.length);
@@ -3907,6 +3908,7 @@
         els.undoBtn.disabled = false;
         previews = [];
         activeOffset = null;
+        els.applyBtn.disabled = true;
         changedTimeReferences = new Map(writableItems.map(({ record, ltc }) => [recordKey(record), ltc.newTimeReference]));
         await refreshRecordsFromHandles();
         renderRows();
@@ -4036,33 +4038,36 @@
       const ok = await confirmWriteChanges(previews.length);
       if (!ok) return;
 
+      const appliedPreviews = previews.slice();
       setState("写入中", "warn");
       els.applyBtn.disabled = true;
       els.undoBtn.disabled = true;
       els.statusLine.textContent = "Writing...";
-      const undoBatch = previews.map(preview => ({
+      const undoBatch = appliedPreviews.map(preview => ({
         fileHandle: preview.fileHandle,
         name: preview.name,
+        relativePath: preview.relativePath,
+        parentPath: preview.parentPath,
         sampleRate: preview.sampleRate,
         timeReferenceOffset: preview.timeReferenceOffset,
         oldTimeReference: preview.oldTimeReference,
         ixmlInfo: preview.ixmlInfo,
       }));
 
-      updateWriteProgress("正在写入…", "", 0, previews.length);
+      updateWriteProgress("正在写入…", "", 0, appliedPreviews.length);
       els.progressOverlay.classList.add("show");
 
       try {
-        for (let i = 0; i < previews.length; i++) {
-          const preview = previews[i];
-          updateWriteProgress("正在写入…", preview.name, i, previews.length);
+        for (let i = 0; i < appliedPreviews.length; i++) {
+          const preview = appliedPreviews[i];
+          updateWriteProgress("正在写入…", preview.name, i, appliedPreviews.length);
           await writeTimeReference(preview, preview.newTimeReference);
-          updateWriteProgress("正在写入…", preview.name, i + 1, previews.length);
+          updateWriteProgress("正在写入…", preview.name, i + 1, appliedPreviews.length);
         }
 
-        updateWriteProgress("正在校验…", "校验写入结果", previews.length, previews.length);
+        updateWriteProgress("正在校验…", "校验写入结果", appliedPreviews.length, appliedPreviews.length);
 
-        for (const preview of previews) {
+        for (const preview of appliedPreviews) {
           const fresh = await scanWave(preview.fileHandle);
           if (fresh.oldTimeReference !== preview.newTimeReference) {
             throw new Error(`${preview.name}: 校验失败`);
@@ -4072,7 +4077,7 @@
 
         let manifestName = null;
         try {
-          updateWriteProgress("正在保存清单…", directoryHandle ? "生成 CSV manifest" : "已跳过清单", previews.length, previews.length);
+          updateWriteProgress("正在保存清单…", directoryHandle ? "生成 CSV manifest" : "已跳过清单", appliedPreviews.length, appliedPreviews.length);
           manifestName = await writeManifestToFolder();
         } catch (error) {
           log(`Manifest WARN: ${error.message}`);
@@ -4080,23 +4085,23 @@
 
         lastUndoBatch = undoBatch;
         els.undoBtn.disabled = false;
-        for (const pill of document.querySelectorAll(".pill")) {
-          pill.className = "pill ok";
-          pill.textContent = "Written";
-        }
+        changedTimeReferences = new Map(appliedPreviews.map(preview => [recordKey(preview), preview.newTimeReference]));
+        previews = [];
+        activeOffset = null;
         await refreshRecordsFromHandles();
+        renderRows();
         setState("完成");
         els.statusLine.textContent = manifestName ? `写入完成；清单：${manifestName}` : "写入完成";
-        log(`Write OK: ${previews.length} files${manifestName ? `; ${manifestName}` : ""}`);
+        log(`Write OK: ${appliedPreviews.length} files${manifestName ? `; ${manifestName}` : ""}`);
 
         els.toast.textContent = manifestName
-          ? `✅ 写入完成 — ${previews.length} 个文件，已保存清单`
-          : `✅ 写入完成 — ${previews.length} 个文件`;
+          ? `✅ 写入完成 — ${appliedPreviews.length} 个文件，已保存清单`
+          : `✅ 写入完成 — ${appliedPreviews.length} 个文件`;
         els.toast.classList.add("show");
         setTimeout(() => els.toast.classList.remove("show"), 4500);
       } finally {
         els.progressOverlay.classList.remove("show");
-        updateWriteProgress("正在写入…", "", 0, previews.length || 1);
+        updateWriteProgress("正在写入…", "", 0, appliedPreviews.length || 1);
         els.undoBtn.disabled = !lastUndoBatch;
       }
     }
