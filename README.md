@@ -20,8 +20,6 @@
   Audio TC Change is a free, open-source, browser-based tool for fixing WAV/BWF production audio timecode. It runs locally in Chrome or Edge, so audio files stay on your machine.
 </p>
 
----
-
 ## 中文
 
 ### 它解决什么问题
