@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
-  <a href="https://github.com/xnpeter/AudioTCChange/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/AudioTCChange?style=social"></a>
+  <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
   <img alt="Current release" src="https://img.shields.io/badge/release-v0.1.1-202a36">
 </p>
 
