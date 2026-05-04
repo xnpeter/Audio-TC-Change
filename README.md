@@ -1,10 +1,24 @@
-# Audio TC Change
+<h1 align="center">Audio TC Change</h1>
 
-Audio TC Change is a free, open-source, browser-based tool for fixing WAV/BWF production audio timecode. It runs locally in Chrome or Edge, so audio files stay on your machine.
+<p align="center">
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
+  <a href="https://github.com/xnpeter/AudioTCChange/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/AudioTCChange?style=social"></a>
+  <img alt="Current release" src="https://img.shields.io/badge/release-v0.1.1-202a36">
+</p>
 
-Demo: https://audiotc.nuomi.video/
+<h2 align="center">把跑偏的声音时码拉回正轨</h2>
 
-Current release: `v0.1.1`
+<p align="center">
+  <a href="#english">English</a>
+  ·
+  <a href="#中文">简体中文</a>
+  ·
+  <a href="https://audiotc.nuomi.video/">在线体验</a>
+</p>
+
+<p align="center">
+  Audio TC Change is a free, open-source, browser-based tool for fixing WAV/BWF production audio timecode. It runs locally in Chrome or Edge, so audio files stay on your machine.
+</p>
 
 ---
 
