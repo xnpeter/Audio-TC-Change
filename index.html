@@ -28,7 +28,12 @@
       --warn: #b54708;
       --ok: #087443;
       --shadow: 0 18px 50px rgba(24, 32, 42, 0.12);
-      --timecode-width: 520px;
+      --timecode-input-width: 188px;
+      --timecode-control-width: calc(var(--timecode-input-width) + 30px);
+      --offset-timecode-control-width: calc(var(--timecode-input-width) + 82px);
+      --calc-b-width: 260px;
+      --calc-label-height: 24px;
+      --calc-control-height: 46px;
       --page-x: 28px;
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -183,17 +188,82 @@
       margin: 0 var(--page-x);
       padding: 16px;
       display: grid;
-      grid-template-columns: var(--timecode-width) 122px minmax(150px, auto) minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(150px, auto) minmax(280px, 1fr);
+      grid-template-columns: max-content 122px max-content minmax(0, 1fr) max-content;
       gap: 12px;
       align-items: end;
       justify-content: start;
       box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .toolbar > label {
+      min-width: 0;
     }
 
     .toolbar > button {
       height: 46px;
       min-width: 72px;
       justify-content: center;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      min-width: 0;
+      justify-content: flex-start;
+    }
+
+    .toolbar-actions button {
+      height: 46px;
+      justify-content: center;
+    }
+
+    #previewBtn,
+    #applyBtn,
+    #undoBtn {
+      min-width: 72px;
+    }
+
+    #exportMetadataBtn {
+      min-width: 132px;
+    }
+
+    #combinePolyBtn {
+      min-width: 106px;
+    }
+
+    .ltc-tools {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 10px;
+      display: grid;
+      gap: 9px;
+      align-self: end;
+      justify-self: end;
+    }
+
+    .ltc-tools-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .ltc-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .ltc-actions button {
+      height: 38px;
+      min-width: 180px;
+      justify-content: center;
+      padding: 0 10px;
     }
 
     .display-option {
@@ -215,36 +285,6 @@
       width: 16px;
       height: 16px;
       accent-color: var(--accent);
-    }
-
-    .ltc-tools {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--soft);
-      padding: 10px;
-      display: grid;
-      gap: 9px;
-      align-self: stretch;
-    }
-
-    .ltc-tools-title {
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 750;
-      line-height: 1;
-    }
-
-    .ltc-actions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .ltc-actions button {
-      height: 38px;
-      min-width: 0;
-      justify-content: center;
-      padding: 0 10px;
     }
 
     label {
@@ -375,6 +415,7 @@
       overflow: hidden;
       background: #fff;
       height: 40px;
+      width: var(--timecode-control-width);
     }
 
     .timecode-control:focus-within {
@@ -390,6 +431,7 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
+      text-align: center;
     }
 
     .timecode-control input:focus {
@@ -399,6 +441,7 @@
     .toolbar .timecode-control {
       grid-template-columns: 52px minmax(0, 1fr) 30px;
       height: 46px;
+      width: var(--offset-timecode-control-width);
     }
 
     .toolbar .timecode-control input {
@@ -411,13 +454,68 @@
 
     .calc-expression .timecode-control {
       grid-template-columns: minmax(0, 1fr) 30px;
-      height: 46px;
+      height: var(--calc-control-height);
+      width: var(--timecode-control-width);
+    }
+
+    .calc-b-field {
+      width: var(--calc-b-width);
+    }
+
+    .calc-b-field .timecode-control,
+    .calc-b-field .calc-frame-control {
+      width: 100%;
+    }
+
+    .calc-frame-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 54px;
+      height: var(--calc-control-height);
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .calc-frame-control input {
+      width: 100%;
+      height: var(--calc-control-height);
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      text-align: center;
+      font-size: 21px;
+      font-weight: 750;
+    }
+
+    .calc-frame-unit {
+      height: var(--calc-control-height);
+      border-left: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--warn);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 16px;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    .calc-frame-control:focus-within {
+      outline: 3px solid rgba(15, 118, 110, 0.18);
+      outline-offset: 1px;
+      border-color: #a7c9c5;
+    }
+
+    [hidden] {
+      display: none !important;
     }
 
     .calculator .timecode-control input {
       border: 0;
       border-radius: 0;
-      height: 46px;
+      height: var(--calc-control-height);
       background: transparent;
     }
 
@@ -565,19 +663,147 @@
 
     .calc-expression {
       display: grid;
-      grid-template-columns: var(--timecode-width) 52px var(--timecode-width) auto minmax(220px, 420px) auto;
+      grid-template-columns: var(--timecode-control-width) 52px var(--calc-b-width) 20px var(--timecode-control-width) max-content;
+      grid-template-areas: "a op b eq result actions";
       gap: 12px;
-      align-items: end;
+      align-items: start;
       justify-content: start;
+      min-width: 0;
     }
 
     .calculator label {
       color: var(--muted);
     }
 
+    .calc-expression > label {
+      grid-template-rows: var(--calc-label-height) var(--calc-control-height);
+      align-self: start;
+      min-width: 0;
+    }
+
+    .calc-a-field { grid-area: a; }
+    .calc-op-stack { grid-area: op; }
+    .calc-b-field { grid-area: b; }
+    .calc-equals { grid-area: eq; }
+    .calc-result-field { grid-area: result; }
+    .calc-actions { grid-area: actions; }
+
+    .calc-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      height: var(--calc-label-height);
+      min-width: 0;
+    }
+
+    .calc-b-field,
+    .calc-result-field {
+      position: relative;
+    }
+
+    .calc-mode-toggle {
+      display: inline-grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      overflow: hidden;
+      background: var(--soft);
+      height: var(--calc-label-height);
+      flex: 0 0 auto;
+    }
+
+    .calculator .calc-mode-btn {
+      height: 22px;
+      min-width: 34px;
+      border: 0;
+      border-radius: 0;
+      padding: 0 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      box-shadow: none;
+      justify-content: center;
+    }
+
+    .calculator .calc-mode-btn + .calc-mode-btn {
+      border-left: 1px solid var(--line);
+    }
+
+    .calculator .calc-mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .calculator .calc-swap-btn {
+      width: 38px;
+      height: var(--calc-label-height);
+      min-width: 0;
+      padding: 0;
+      justify-content: center;
+      border-radius: 7px;
+      color: var(--muted);
+      background: var(--soft);
+      box-shadow: none;
+    }
+
+    .swap-arrows {
+      width: 18px;
+      height: 13px;
+      display: grid;
+      gap: 5px;
+      align-content: center;
+    }
+
+    .swap-arrows span {
+      position: relative;
+      display: block;
+      width: 15px;
+      height: 1.5px;
+      background: currentColor;
+      border-radius: 999px;
+    }
+
+    .swap-arrows span:first-child {
+      justify-self: start;
+      border-radius: 999px 0 0 999px;
+    }
+
+    .swap-arrows span:first-child::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 6px;
+      height: 1.5px;
+      border-radius: 999px;
+      background: currentColor;
+      transform: rotate(42deg);
+      transform-origin: right center;
+    }
+
+    .swap-arrows span:last-child {
+      justify-self: end;
+      border-radius: 0 999px 999px 0;
+    }
+
+    .swap-arrows span:last-child::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 6px;
+      height: 1.5px;
+      border-radius: 999px;
+      background: currentColor;
+      transform: rotate(42deg);
+      transform-origin: left center;
+    }
+
     .calculator input,
     .calc-result {
-      height: 46px;
+      height: var(--calc-control-height);
       border: 1px solid var(--line);
       background: var(--soft);
       color: var(--ink);
@@ -594,9 +820,21 @@
       border-color: var(--accent);
     }
 
+    .calc-op-stack {
+      display: grid;
+      grid-template-rows: var(--calc-label-height) var(--calc-control-height);
+      gap: 5px;
+      justify-items: center;
+      align-self: start;
+    }
+
+    .calc-op-stack .calc-swap-btn {
+      position: static;
+    }
+
     .calc-operator {
       width: 52px;
-      height: 46px;
+      height: var(--calc-control-height);
       padding: 0 0 3px;
       align-items: center;
       justify-content: center;
@@ -628,19 +866,30 @@
     .calc-equals {
       color: var(--muted);
       font-size: 22px;
-      line-height: 46px;
+      line-height: var(--calc-control-height);
       font-weight: 800;
       text-align: center;
+      align-self: end;
     }
 
     .calc-result {
       display: flex;
       align-items: center;
+      justify-content: center;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
       color: var(--accent-strong);
       font-weight: 750;
+      width: var(--timecode-control-width);
+    }
+
+    .calc-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.2;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
     .calc-actions {
@@ -648,14 +897,15 @@
       gap: 10px;
       justify-content: flex-end;
       align-items: end;
+      align-self: end;
     }
 
     .calculator .primary {
-      height: 46px;
+      height: var(--calc-control-height);
     }
 
     .calculator button {
-      height: 46px;
+      height: var(--calc-control-height);
     }
 
     .calculator .tc-step {
@@ -905,24 +1155,85 @@
       display: none;
     }
 
+    @media (max-width: 1500px) {
+      .toolbar {
+        grid-template-columns: max-content 122px max-content minmax(0, 1fr);
+      }
+      .ltc-tools {
+        grid-column: 1 / -1;
+        justify-self: start;
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .toolbar {
+        grid-template-columns: max-content 122px max-content;
+      }
+      .toolbar-actions {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 1050px) {
+      .calc-expression {
+        grid-template-columns: minmax(var(--timecode-control-width), 1fr) 52px minmax(var(--calc-b-width), 1fr) max-content;
+        grid-template-areas:
+          "a op b b"
+          ". eq result actions";
+      }
+      .calc-result,
+      .calc-result-field {
+        width: 100%;
+      }
+      .calc-equals {
+        justify-self: end;
+      }
+      .calc-actions {
+        justify-content: flex-start;
+      }
+    }
+
     @media (max-width: 980px) {
       header { align-items: flex-start; flex-direction: column; }
       .header-meta { justify-content: flex-start; }
-      .toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+      .toolbar { grid-template-columns: max-content 122px; }
+      .toolbar-actions,
       .ltc-tools { grid-column: 1 / -1; }
       .stats { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
-      .calc-expression { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr); }
-      .calc-equals, .calc-result, .calc-actions { grid-column: 1 / -1; }
-      .calc-actions { justify-content: flex-start; }
+      .calc-expression {
+        grid-template-columns: minmax(var(--timecode-control-width), 1fr) 52px minmax(var(--calc-b-width), 1fr);
+        grid-template-areas:
+          "a op b"
+          ". eq result"
+          ". . actions";
+      }
     }
 
     @media (max-width: 620px) {
       :root { --page-x: 14px; }
       .toolbar { grid-template-columns: 1fr; }
+      .timecode-control,
+      .toolbar .timecode-control,
+      .calc-expression .timecode-control,
+      .calc-b-field,
+      .calc-result { width: 100%; }
+      .ltc-tools { width: 100%; justify-self: stretch; }
       .ltc-actions { grid-template-columns: 1fr; }
       .stats { grid-template-columns: 1fr; }
-      .calc-expression { grid-template-columns: 1fr; }
+      .calc-expression {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "a"
+          "op"
+          "b"
+          "eq"
+          "result"
+          "actions";
+      }
+      .calc-op-stack,
       .calc-operator { width: 100%; }
+      .calculator .calc-swap-btn { width: 100%; }
       .calc-equals, .calc-result, .calc-actions { grid-column: auto; }
       .calc-actions { display: grid; grid-template-columns: 1fr; }
       button { width: 100%; justify-content: center; }
@@ -1055,6 +1366,9 @@
     .confirm-actions button {
       width: auto;
     }
+    .confirm-actions [hidden] {
+      display: none !important;
+    }
     #toast {
       position: fixed;
       bottom: 80px;
@@ -1098,7 +1412,7 @@
         <h2 class="calc-title">时间码计算器</h2>
       </div>
       <div class="calc-expression">
-        <label>
+        <label class="calc-a-field">
           时间码 A
           <div class="timecode-control">
             <input id="calcStartInput" value="00:00:00:00" inputmode="numeric" aria-label="timecode A" autocomplete="off" spellcheck="false">
@@ -1108,24 +1422,41 @@
             </div>
           </div>
         </label>
-        <button id="calcOpBtn" class="calc-operator" type="button" data-op="-" title="切换加/减" aria-label="切换加减">−</button>
-        <label>
-          时间码 B
-          <div class="timecode-control">
+        <div class="calc-op-stack">
+          <button id="calcSwapBtn" class="calc-swap-btn" type="button" title="交换 A/B" aria-label="交换 A/B">
+            <span class="swap-arrows" aria-hidden="true"><span></span><span></span></span>
+          </button>
+          <button id="calcOpBtn" class="calc-operator" type="button" data-op="-" title="切换加/减" aria-label="切换加减">−</button>
+        </div>
+        <label class="calc-b-field">
+          <div class="calc-label-row">
+            <span id="calcBLabel">时间码 B</span>
+            <div class="calc-mode-toggle" aria-label="B 输入模式">
+              <button id="calcBModeTimecodeBtn" class="calc-mode-btn active" type="button" data-mode="timecode">时码</button>
+              <button id="calcBModeFramesBtn" class="calc-mode-btn" type="button" data-mode="frames">帧</button>
+            </div>
+          </div>
+          <div id="calcEndTimecodeControl" class="timecode-control">
             <input id="calcEndInput" value="00:00:00:00" inputmode="numeric" aria-label="timecode B" autocomplete="off" spellcheck="false">
             <div class="tc-steppers">
               <button id="calcEndUpBtn" class="tc-step" type="button" title="B 增加一帧">▲</button>
               <button id="calcEndDownBtn" class="tc-step" type="button" title="B 减少一帧">▼</button>
             </div>
           </div>
+          <div id="calcFrameControl" class="calc-frame-control" hidden>
+            <input id="calcFrameInput" value="0" inputmode="numeric" aria-label="frames B" autocomplete="off" spellcheck="false">
+            <div class="calc-frame-unit">FR</div>
+          </div>
         </label>
         <div class="calc-equals">=</div>
-        <label>
-          结果
+        <label class="calc-result-field">
+          <div class="calc-label-row">
+            <span>结果</span>
+            <span id="calcTotalFrames" class="calc-meta">0 帧</span>
+          </div>
           <div id="calcResult" class="calc-result">00:00:00:00</div>
         </label>
         <div class="calc-actions">
-          <button id="calcBtn" type="button">计算</button>
           <button id="useCalcBtn" class="primary" type="button" disabled>使用计算结果</button>
         </div>
       </div>
@@ -1177,16 +1508,19 @@
         显示sub-frame
       </label>
 
-      <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
-      <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
-      <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
-      <button id="exportMetadataBtn" type="button" disabled>导出为元数据</button>
+      <div class="toolbar-actions" aria-label="file actions">
+        <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
+        <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
+        <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
+        <button id="exportMetadataBtn" type="button" disabled>导出为元数据</button>
+        <button id="combinePolyBtn" type="button" disabled>合并Poly</button>
+      </div>
 
       <div class="ltc-tools" aria-label="extract timecode from audio waveform">
         <div class="ltc-tools-title">从波形提取时码（特别适配ZOOM H6等多轨Mono文件）</div>
         <div class="ltc-actions">
-          <button id="extractLtcBtn" type="button" disabled>从音频波形提取时码</button>
-          <button id="writeLtcBtn" class="danger" type="button" disabled>将LTC写入文件时码</button>
+          <button id="extractLtcBtn" type="button" title="从音频波形提取 LTC 时码，特别适配 ZOOM H6 等多轨 Mono 文件" disabled>从音频波形提取时码</button>
+          <button id="writeLtcBtn" class="danger" type="button" title="将检测到的 LTC 写入文件时码" disabled>将LTC写入文件时码</button>
         </div>
       </div>
     </section>
@@ -1286,15 +1620,23 @@
       calcEndInput: document.getElementById("calcEndInput"),
       calcEndUpBtn: document.getElementById("calcEndUpBtn"),
       calcEndDownBtn: document.getElementById("calcEndDownBtn"),
+      calcEndTimecodeControl: document.getElementById("calcEndTimecodeControl"),
+      calcFrameControl: document.getElementById("calcFrameControl"),
+      calcFrameInput: document.getElementById("calcFrameInput"),
+      calcBLabel: document.getElementById("calcBLabel"),
+      calcBModeTimecodeBtn: document.getElementById("calcBModeTimecodeBtn"),
+      calcBModeFramesBtn: document.getElementById("calcBModeFramesBtn"),
+      calcSwapBtn: document.getElementById("calcSwapBtn"),
       calcOpBtn: document.getElementById("calcOpBtn"),
       calcResult: document.getElementById("calcResult"),
-      calcBtn: document.getElementById("calcBtn"),
+      calcTotalFrames: document.getElementById("calcTotalFrames"),
       useCalcBtn: document.getElementById("useCalcBtn"),
       previewBtn: document.getElementById("previewBtn"),
       applyBtn: document.getElementById("applyBtn"),
       undoBtn: document.getElementById("undoBtn"),
       extractLtcBtn: document.getElementById("extractLtcBtn"),
       exportMetadataBtn: document.getElementById("exportMetadataBtn"),
+      combinePolyBtn: document.getElementById("combinePolyBtn"),
       writeLtcBtn: document.getElementById("writeLtcBtn"),
       fileCount: document.getElementById("fileCount"),
       offsetFrames: document.getElementById("offsetFrames"),
@@ -1329,6 +1671,7 @@
     let previews = [];
     let activeOffset = null;
     let calculatorOffset = null;
+    let calcBMode = "timecode";
     let lastUndoBatch = null;
     let ltcResults = new Map();
     let takeGroupKeys = new Set();
@@ -1413,6 +1756,28 @@
 
     function isTakeTrack(record) {
       return Boolean(record.parentPath && takeGroupKeys.has(record.parentPath));
+    }
+
+    function isZoomLrFile(record) {
+      return /_LR\.wav$/i.test(record.name);
+    }
+
+    function zoomTrackNumber(record) {
+      const match = record.name.match(/(?:^|[_-])Tr(\d+)\.wav$/i);
+      return match ? Number(match[1]) : null;
+    }
+
+    function combineSortValue(record) {
+      if (isZoomLrFile(record)) return 0;
+      const track = zoomTrackNumber(record);
+      if (track !== null) return 10 + track;
+      return 1000;
+    }
+
+    function combineEligibleGroups() {
+      return Array.from(recordsByGroup().entries())
+        .filter(([, groupRecords]) => groupRecords.length > 1 && groupRecords.every(isTakeTrack))
+        .filter(([, groupRecords]) => groupRecords.some(record => record.channels > 1) || groupRecords.some(record => record.channels === 1));
     }
 
     function recordsByGroup() {
@@ -1747,7 +2112,7 @@
       const signLabel = sign < 0n ? "-" : "+";
       const sep = timecodeSeparator(fps);
       return {
-        label: `${signLabel}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${sep}${String(ff).padStart(2, "0")}`,
+        label: `${signLabel}${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${sep}${String(ff).padStart(frameDigitsFor(fps), "0")}`,
         fps,
         frames,
         seconds: offsetSeconds,
@@ -1801,11 +2166,89 @@
       return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}${timecodeSeparator(fps)}${String(ff).padStart(frameDigitsFor(fps), "0")}`;
     }
 
-    function formatTimecodeDigits(digits, fps = defaultDisplayFps()) {
+    function clampNumber(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function legalizeTimecodeParts({ hh, mm, ss, ff }, fps = defaultDisplayFps()) {
+      const nominalFps = Number(nominalFpsFor(fps));
+      const dropFrames = Number(dropFramesFor(fps));
+      const safe = {
+        hh: clampNumber(Number.isFinite(hh) ? hh : 0, 0, 99),
+        mm: clampNumber(Number.isFinite(mm) ? mm : 0, 0, 59),
+        ss: clampNumber(Number.isFinite(ss) ? ss : 0, 0, 59),
+        ff: clampNumber(Number.isFinite(ff) ? ff : 0, 0, nominalFps - 1),
+      };
+      if (dropFrames && safe.ss === 0 && safe.mm % 10 !== 0 && safe.ff < dropFrames) {
+        safe.ff = dropFrames;
+      }
+      return safe;
+    }
+
+    function timecodePartsFromDigits(digits, fps = defaultDisplayFps()) {
       const frameDigits = frameDigitsFor(fps);
       const digitCount = 6 + frameDigits;
       const padded = digits.padEnd(digitCount, "0").slice(0, digitCount);
-      return `${padded.slice(0, 2)}:${padded.slice(2, 4)}:${padded.slice(4, 6)}${timecodeSeparator(fps)}${padded.slice(6)}`;
+      return {
+        hh: Number(padded.slice(0, 2)),
+        mm: Number(padded.slice(2, 4)),
+        ss: Number(padded.slice(4, 6)),
+        ff: Number(padded.slice(6)),
+      };
+    }
+
+    function timecodePartsFromRaw(raw, fps = defaultDisplayFps()) {
+      const frameDigits = frameDigitsFor(fps);
+      const parts = String(raw || "").trim().replaceAll(";", ":").split(":");
+      if (parts.length === 4) {
+        const numberPart = (value, maxDigits) => {
+          const digits = String(value).replace(/\D/g, "").slice(0, maxDigits);
+          return digits ? Number(digits) : 0;
+        };
+        return {
+          hh: numberPart(parts[0].padStart(2, "0"), 2),
+          mm: numberPart(parts[1].padStart(2, "0"), 2),
+          ss: numberPart(parts[2].padStart(2, "0"), 2),
+          ff: numberPart(parts[3], frameDigits),
+        };
+      }
+      return timecodePartsFromDigits(clampDigits(raw, fps), fps);
+    }
+
+    function formatTimecodeParts(parts, fps = defaultDisplayFps()) {
+      const safe = legalizeTimecodeParts(parts, fps);
+      return `${String(safe.hh).padStart(2, "0")}:${String(safe.mm).padStart(2, "0")}:${String(safe.ss).padStart(2, "0")}${timecodeSeparator(fps)}${String(safe.ff).padStart(frameDigitsFor(fps), "0")}`;
+    }
+
+    function formatTimecodeEntryDigits(digits, fps = defaultDisplayFps()) {
+      const frameDigits = frameDigitsFor(fps);
+      const segments = [
+        { key: "hh", length: 2 },
+        { key: "mm", length: 2 },
+        { key: "ss", length: 2 },
+        { key: "ff", length: frameDigits },
+      ];
+      const parts = { hh: "00", mm: "00", ss: "00", ff: "0".repeat(frameDigits) };
+      const numericParts = { hh: 0, mm: 0, ss: 0, ff: 0 };
+      let cursor = 0;
+      for (const segment of segments) {
+        const chunk = digits.slice(cursor, cursor + segment.length);
+        cursor += segment.length;
+        if (!chunk) continue;
+        const value = Number(chunk);
+        if (chunk.length === segment.length) {
+          numericParts[segment.key] = legalizeTimecodeParts({ ...numericParts, [segment.key]: value }, fps)[segment.key];
+          parts[segment.key] = String(numericParts[segment.key]).padStart(segment.length, "0");
+        } else {
+          numericParts[segment.key] = value;
+          parts[segment.key] = chunk;
+        }
+      }
+      return `${parts.hh}:${parts.mm}:${parts.ss}${timecodeSeparator(fps)}${parts.ff}`;
+    }
+
+    function formatTimecodeDigits(digits, fps = defaultDisplayFps()) {
+      return formatTimecodeParts(timecodePartsFromDigits(digits, fps), fps);
     }
 
     function clampDigits(raw, fps = defaultDisplayFps()) {
@@ -1832,12 +2275,63 @@
       }
     }
 
+    function setTimecodeValueFromEntryDigits(input, digits, caretDigitIndex = null) {
+      const fps = defaultDisplayFps();
+      input.value = formatTimecodeEntryDigits(digits, fps);
+      if (caretDigitIndex !== null) {
+        const digitPositions = timecodeDigitPositions(fps);
+        const safe = Math.max(0, Math.min(digitPositions.length - 1, caretDigitIndex));
+        input.setSelectionRange(digitPositions[safe], digitPositions[safe] + 1);
+      }
+    }
+
+    function clearTimecodePendingSegment(input) {
+      delete input.dataset.tcPendingSegmentStart;
+      delete input.dataset.tcPendingSegmentDigits;
+      delete input.dataset.tcPendingSegmentBaseDigits;
+      delete input.dataset.tcPendingWholeDigits;
+    }
+
+    function timecodeSegmentForDigitIndex(digitIndex, fps = defaultDisplayFps()) {
+      const frameDigits = frameDigitsFor(fps);
+      return [
+        { start: 0, end: 2 },
+        { start: 2, end: 4 },
+        { start: 4, end: 6 },
+        { start: 6, end: 6 + frameDigits },
+      ].find(range => digitIndex >= range.start && digitIndex < range.end) || null;
+    }
+
+    function caretAfterLegalizedInsert(digits, startDigitIndex, nextCaretDigitIndex, fps = defaultDisplayFps()) {
+      const parts = timecodePartsFromDigits(digits, fps);
+      const safe = legalizeTimecodeParts(parts, fps);
+      const frameDigits = frameDigitsFor(fps);
+      const ranges = [
+        { start: 0, end: 2, raw: parts.hh, safe: safe.hh },
+        { start: 2, end: 4, raw: parts.mm, safe: safe.mm },
+        { start: 4, end: 6, raw: parts.ss, safe: safe.ss },
+        { start: 6, end: 6 + frameDigits, raw: parts.ff, safe: safe.ff },
+      ];
+      const range = ranges.find(item => startDigitIndex >= item.start && startDigitIndex < item.end);
+      if (!range || range.raw === range.safe) return nextCaretDigitIndex;
+      if (nextCaretDigitIndex < range.end) return range.end;
+      return nextCaretDigitIndex;
+    }
+
     function normalizeTimecodeInput(input = els.offsetInput, caretDigitIndex = null, invalidate = true) {
-      setTimecodeValueFromDigits(input, clampDigits(input.value), caretDigitIndex);
+      clearTimecodePendingSegment(input);
+      const fps = defaultDisplayFps();
+      input.value = formatTimecodeParts(timecodePartsFromRaw(input.value, fps), fps);
+      if (caretDigitIndex !== null) {
+        const digitPositions = timecodeDigitPositions(fps);
+        const safe = Math.max(0, Math.min(digitPositions.length - 1, caretDigitIndex));
+        input.setSelectionRange(digitPositions[safe], digitPositions[safe] + 1);
+      }
       if (invalidate) invalidatePreview();
     }
 
     function stepTimecodeByFrames(input, deltaFrames, invalidate = true) {
+      clearTimecodePendingSegment(input);
       const fps = parseFps(els.fpsInput.value);
       const frames = timecodeToFrames(input.value, fps) + BigInt(deltaFrames);
       input.value = framesToTimecode(frames, fps);
@@ -1856,6 +2350,7 @@
     }
 
     function stepTimecodeAtCaret(input, direction, invalidate = true) {
+      clearTimecodePendingSegment(input);
       const fps = parseFps(els.fpsInput.value);
       const nominal = nominalFpsFor(fps);
       const frameDigits = frameDigitsFor(fps);
@@ -1888,17 +2383,82 @@
       const selectionEnd = input.selectionEnd ?? selectionStart;
       const wholeValueSelected = selectionStart === 0 && selectionEnd >= input.value.length;
       const oldDigits = wholeValueSelected ? "0".repeat(digitCount) : clampDigits(input.value, fps).padEnd(digitCount, "0").slice(0, digitCount);
+      const pendingSegmentStart = Number(input.dataset.tcPendingSegmentStart);
+      const pendingSegmentDigits = input.dataset.tcPendingSegmentDigits || "";
+      if (!wholeValueSelected && incoming.length === 1 && Number.isFinite(pendingSegmentStart) && pendingSegmentDigits) {
+        const pendingSegment = timecodeSegmentForDigitIndex(pendingSegmentStart, fps);
+        const pendingSegmentLength = pendingSegment ? pendingSegment.end - pendingSegment.start : 0;
+        if (pendingSegment && pendingSegmentDigits.length < pendingSegmentLength) {
+          const baseDigits = (input.dataset.tcPendingSegmentBaseDigits || oldDigits).padEnd(digitCount, "0").slice(0, digitCount);
+          const segmentDigits = (pendingSegmentDigits + incoming).padStart(pendingSegmentLength, "0").slice(-pendingSegmentLength);
+          const nextDigits = baseDigits.slice(0, pendingSegment.start) + segmentDigits + baseDigits.slice(pendingSegment.end);
+          clearTimecodePendingSegment(input);
+          setTimecodeValueFromDigits(input, nextDigits, caretAfterLegalizedInsert(nextDigits, pendingSegment.start, pendingSegment.end, fps));
+          if (invalidate) invalidatePreview();
+          return;
+        }
+      }
       const start = digitIndexFromCaret(input, input.selectionStart ?? 0);
+      const segment = timecodeSegmentForDigitIndex(start, fps);
+      const segmentLength = segment ? segment.end - segment.start : 0;
+
+      if (incoming.length === 1 && (wholeValueSelected || input.dataset.tcPendingWholeDigits)) {
+        delete input.dataset.tcPendingSegmentStart;
+        delete input.dataset.tcPendingSegmentDigits;
+        const pendingDigits = wholeValueSelected ? "" : (input.dataset.tcPendingWholeDigits || "");
+        const nextDigits = (pendingDigits + incoming).slice(0, digitCount);
+        if (nextDigits.length < digitCount) input.dataset.tcPendingWholeDigits = nextDigits;
+        else delete input.dataset.tcPendingWholeDigits;
+        setTimecodeValueFromEntryDigits(input, nextDigits, Math.min(nextDigits.length, digitCount - 1));
+        if (invalidate) invalidatePreview();
+        return;
+      }
+
+      if (wholeValueSelected && incoming.length > 1) {
+        clearTimecodePendingSegment(input);
+        setTimecodeValueFromEntryDigits(input, incoming, Math.min(incoming.length, digitCount - 1));
+        if (invalidate) invalidatePreview();
+        return;
+      }
+
+      if (!wholeValueSelected && incoming.length === 1 && segment && segmentLength > 1) {
+        const pendingStart = Number(input.dataset.tcPendingSegmentStart);
+        const pendingDigits = input.dataset.tcPendingSegmentDigits || "";
+        if (pendingStart === segment.start && start === segment.start + pendingDigits.length && pendingDigits.length < segmentLength) {
+          const segmentDigits = (pendingDigits + incoming).padStart(segmentLength, "0").slice(-segmentLength);
+          const nextDigits = oldDigits.slice(0, segment.start) + segmentDigits + oldDigits.slice(segment.end);
+          clearTimecodePendingSegment(input);
+          setTimecodeValueFromDigits(input, nextDigits, caretAfterLegalizedInsert(nextDigits, segment.start, segment.end, fps));
+          if (invalidate) invalidatePreview();
+          return;
+        }
+
+        if (start === segment.start) {
+          const segmentDigits = incoming.padEnd(segmentLength, "0");
+          const nextDigits = oldDigits.slice(0, segment.start) + segmentDigits + oldDigits.slice(segment.end);
+          input.dataset.tcPendingSegmentStart = String(segment.start);
+          input.dataset.tcPendingSegmentDigits = incoming;
+          input.dataset.tcPendingSegmentBaseDigits = oldDigits;
+          const rawDisplayDigits = oldDigits.slice(0, segment.start) + incoming;
+          setTimecodeValueFromEntryDigits(input, rawDisplayDigits, segment.start + 1);
+          if (invalidate) invalidatePreview();
+          return;
+        }
+      }
+
+      clearTimecodePendingSegment(input);
       const nextDigits = (
         oldDigits.slice(0, start) +
         incoming +
         oldDigits.slice(start + incoming.length)
       ).slice(0, digitCount);
-      setTimecodeValueFromDigits(input, nextDigits, start + incoming.length);
+      const nextCaret = start + incoming.length;
+      setTimecodeValueFromDigits(input, nextDigits, caretAfterLegalizedInsert(nextDigits, start, nextCaret, fps));
       if (invalidate) invalidatePreview();
     }
 
     function deleteTimecodeDigit(input, backspace, invalidate = true) {
+      clearTimecodePendingSegment(input);
       const fps = defaultDisplayFps();
       const digitCount = timecodeDigitCount(fps);
       const oldDigits = clampDigits(input.value, fps).padEnd(digitCount, "0").slice(0, digitCount);
@@ -1941,6 +2501,10 @@
       return out;
     }
 
+    function paddedAsciiField(view, pos, len) {
+      return asciiFromView(view, pos, len).replace(/\0.*$/, "").trim();
+    }
+
     function findAsciiInView(view, pattern, from = 0) {
       const codes = Array.from(pattern, c => c.charCodeAt(0));
       const limit = view.byteLength - codes.length;
@@ -1975,15 +2539,22 @@
     }
 
     function parseIxmlInfo(view, chunkStart, chunkSize) {
+      const fieldTags = ["PROJECT", "SCENE", "TAKE", "TAPE", "FILE_UID", "UBITS", "NOTE", "CIRCLED"];
+      const fields = {};
+      for (const tag of fieldTags) {
+        const field = readIxmlField(view, chunkStart, tag);
+        if (field) fields[tag] = field;
+      }
       const timestampHi = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI");
       const timestampLo = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO");
       const timestampSampleRate = readIxmlField(view, chunkStart, "TIMESTAMP_SAMPLE_RATE");
       const timecodeRate = readIxmlField(view, chunkStart, "TIMECODE_RATE");
       const timecodeFlag = readIxmlField(view, chunkStart, "TIMECODE_FLAG");
-      if (!timestampHi && !timestampLo && !timestampSampleRate && !timecodeRate && !timecodeFlag) return null;
+      if (!timestampHi && !timestampLo && !timestampSampleRate && !timecodeRate && !timecodeFlag && !Object.keys(fields).length) return null;
       return {
         chunkStart,
         chunkSize,
+        fields,
         timestampHi,
         timestampLo,
         timestampSampleRate,
@@ -2010,6 +2581,7 @@
       let timeReferenceOffset = null;
       let oldTimeReference = null;
       let hasBext = false;
+      let bextInfo = null;
       let ixmlInfo = null;
       let dataOffset = null;
       let dataSize = null;
@@ -2035,6 +2607,15 @@
           timeReferenceOffset = chunkStart + 338;
           const timeReference = await readDataView(file, timeReferenceOffset, 8);
           oldTimeReference = timeReference.getBigUint64(0, LITTLE);
+          const bext = await readDataView(file, chunkStart, Math.min(chunkSize, 348));
+          bextInfo = {
+            description: paddedAsciiField(bext, 0, Math.min(256, bext.byteLength)),
+            originator: bext.byteLength >= 288 ? paddedAsciiField(bext, 256, 32) : "",
+            originatorReference: bext.byteLength >= 320 ? paddedAsciiField(bext, 288, 32) : "",
+            originationDate: bext.byteLength >= 330 ? paddedAsciiField(bext, 320, 10) : "",
+            originationTime: bext.byteLength >= 338 ? paddedAsciiField(bext, 330, 8) : "",
+            version: bext.byteLength >= 348 ? bext.getUint16(346, LITTLE) : null,
+          };
         } else if (chunkId === "iXML") {
           const ixml = await readDataView(file, chunkStart, chunkSize);
           ixmlInfo = parseIxmlInfo(ixml, chunkStart, chunkSize);
@@ -2059,12 +2640,14 @@
         name,
         relativePath: meta.relativePath || name,
         parentPath: meta.parentPath || "",
+        parentHandle: meta.parentHandle || null,
         sampleRate,
         channels,
         bitsPerSample,
         blockAlign,
         audioFormat,
         hasBext,
+        bextInfo,
         timeReferenceOffset,
         oldTimeReference,
         ixmlInfo,
@@ -3206,12 +3789,22 @@
       return current.halfBitError - auto.best.halfBitError > 0.00035;
     }
 
+    function calcFrameValue() {
+      const digits = String(els.calcFrameInput.value || "").replace(/\D/g, "");
+      return digits ? BigInt(digits) : 0n;
+    }
+
+    function normalizeCalcFrameInput() {
+      const digits = String(els.calcFrameInput.value || "").replace(/\D/g, "");
+      els.calcFrameInput.value = digits.replace(/^0+(?=\d)/, "") || "0";
+    }
+
     function calculateTimecodeDifference() {
       const fps = parseFps(els.fpsInput.value);
-      normalizeTimecodeInput(els.calcStartInput, null, false);
-      normalizeTimecodeInput(els.calcEndInput, null, false);
       const startFrames = timecodeToFrames(els.calcStartInput.value, fps);
-      const endFrames = timecodeToFrames(els.calcEndInput.value, fps);
+      const endFrames = calcBMode === "frames"
+        ? calcFrameValue()
+        : timecodeToFrames(els.calcEndInput.value, fps);
       const op = els.calcOpBtn.dataset.op === "-" ? "-" : "+";
       const resultFrames = op === "-" ? startFrames - endFrames : startFrames + endFrames;
       const absFrames = resultFrames < 0n ? -resultFrames : resultFrames;
@@ -3219,15 +3812,56 @@
       const tc = framesToTimecode(absFrames, fps);
       calculatorOffset = { frames: resultFrames, tc };
       els.calcResult.textContent = `${signLabel}${tc}`;
+      els.calcTotalFrames.textContent = `${resultFrames.toString()} 帧`;
       els.useCalcBtn.disabled = false;
+    }
+
+    function refreshCalculator() {
+      try {
+        calculateTimecodeDifference();
+      } catch (error) {
+        log(`ERROR: ${error.message}`);
+      }
     }
 
     function toggleCalculatorOperator() {
       const next = els.calcOpBtn.dataset.op === "-" ? "+" : "-";
       els.calcOpBtn.dataset.op = next;
       els.calcOpBtn.textContent = next === "-" ? "−" : "+";
-      calculatorOffset = null;
-      els.useCalcBtn.disabled = true;
+      refreshCalculator();
+    }
+
+    function setCalcBMode(mode) {
+      calcBMode = mode === "frames" ? "frames" : "timecode";
+      const frameMode = calcBMode === "frames";
+      els.calcEndTimecodeControl.hidden = frameMode;
+      els.calcFrameControl.hidden = !frameMode;
+      els.calcBLabel.textContent = frameMode ? "帧数 B" : "时间码 B";
+      els.calcBModeTimecodeBtn.classList.toggle("active", !frameMode);
+      els.calcBModeFramesBtn.classList.toggle("active", frameMode);
+      els.calcEndUpBtn.disabled = frameMode;
+      els.calcEndDownBtn.disabled = frameMode;
+      if (frameMode) normalizeCalcFrameInput();
+      refreshCalculator();
+    }
+
+    function showToast(message, duration = 2600) {
+      els.toast.textContent = message;
+      els.toast.classList.add("show");
+      setTimeout(() => els.toast.classList.remove("show"), duration);
+    }
+
+    function swapCalculatorTimecodes() {
+      if (calcBMode !== "timecode") {
+        showToast("帧模式下不能交换 A/B");
+        return;
+      }
+      const a = els.calcStartInput.value;
+      els.calcStartInput.value = els.calcEndInput.value;
+      els.calcEndInput.value = a;
+      normalizeTimecodeInput(els.calcStartInput, null, false);
+      normalizeTimecodeInput(els.calcEndInput, null, false);
+      refreshCalculator();
     }
 
     function useCalculatorResult() {
@@ -3380,6 +4014,226 @@
         bytes[3 + i * 2] = code >> 8;
       }
       return new Blob([bytes], { type: "text/csv;charset=utf-16le" });
+    }
+
+    function xmlEscape(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+    }
+
+    function trackNameForSource(record, channelIndex) {
+      if (isZoomLrFile(record)) return channelIndex === 0 ? "TrL" : "TrR";
+      const track = zoomTrackNumber(record);
+      if (track !== null) return `Tr${track}`;
+      return record.channels === 1 ? record.name.replace(/\.[^.]+$/, "") : `A${channelIndex + 1}`;
+    }
+
+    function sourceChannelIndex(record, channelIndex) {
+      if (isZoomLrFile(record)) return channelIndex + 1;
+      const track = zoomTrackNumber(record);
+      if (track !== null) return track + 2;
+      return channelIndex + 1;
+    }
+
+    function combineTrackPlan(groupRecords) {
+      const sorted = [...groupRecords].sort((a, b) => {
+        const value = combineSortValue(a) - combineSortValue(b);
+        if (value) return value;
+        return recordLabel(a).localeCompare(recordLabel(b));
+      });
+      const tracks = [];
+      for (const record of sorted) {
+        for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
+          tracks.push({
+            record,
+            channelIndex,
+            channelName: trackNameForSource(record, channelIndex),
+            channelIndexValue: sourceChannelIndex(record, channelIndex),
+          });
+        }
+      }
+      return tracks;
+    }
+
+    function validateCombineGroup(groupRecords) {
+      if (!groupRecords.length) throw new Error("没有可合并的分轨文件");
+      const first = groupRecords[0];
+      for (const record of groupRecords) {
+        if (record.audioFormat !== first.audioFormat) throw new Error(`${recordLabel(record)}: 音频格式和其他分轨不同`);
+        if (record.sampleRate !== first.sampleRate) throw new Error(`${recordLabel(record)}: 采样率和其他分轨不同`);
+        if (record.bitsPerSample !== first.bitsPerSample) throw new Error(`${recordLabel(record)}: 位深和其他分轨不同`);
+        if (record.oldTimeReference !== first.oldTimeReference) throw new Error(`${recordLabel(record)}: 起始 TimeReference 和其他分轨不同`);
+      }
+      const durations = groupRecords.map(record => record.durationSamples);
+      const minDuration = durations.reduce((min, value) => value < min ? value : min, durations[0]);
+      const maxDuration = durations.reduce((max, value) => value > max ? value : max, durations[0]);
+      if (maxDuration !== minDuration) throw new Error(`${groupLabel(first)}: 分轨时长不同，暂不自动裁切或补静音`);
+      const tracks = combineTrackPlan(groupRecords);
+      const bytesPerSample = first.bitsPerSample / 8;
+      if (!Number.isInteger(bytesPerSample)) throw new Error(`${groupLabel(first)}: 不支持 ${first.bitsPerSample} bit 合并`);
+      const blockAlign = tracks.length * bytesPerSample;
+      const dataSize = Number(minDuration) * blockAlign;
+      if (dataSize > 0xffffffff) throw new Error(`${groupLabel(first)}: 合并后超过 RIFF 4GB 限制`);
+      return { first, tracks, bytesPerSample, blockAlign, durationSamples: minDuration, dataSize };
+    }
+
+    function ixmlFieldValue(record, tag) {
+      return record.ixmlInfo?.fields?.[tag]?.value || "";
+    }
+
+    function commonValue(recordsToCheck, getter) {
+      const values = recordsToCheck
+        .map(getter)
+        .filter(value => value !== null && value !== undefined && value !== "");
+      if (!values.length) return "";
+      return values.every(value => value === values[0]) ? values[0] : "";
+    }
+
+    function combineBextDescription(sourceInfo, tracks) {
+      const lines = ["zNOTE=Combined by Audio TC Change"];
+      if (sourceInfo.scene) lines.unshift(`zSCENE=${sourceInfo.scene}`);
+      if (sourceInfo.take) lines.splice(sourceInfo.scene ? 1 : 0, 0, `zTAKE=${sourceInfo.take}`);
+      for (const track of tracks) {
+        lines.push(`zTRK${track.channelIndexValue}=${track.channelName}`);
+      }
+      return lines.join("\r\n");
+    }
+
+    function combineSourceInfo(groupRecords) {
+      return {
+        project: commonValue(groupRecords, record => ixmlFieldValue(record, "PROJECT")),
+        scene: commonValue(groupRecords, record => ixmlFieldValue(record, "SCENE")),
+        take: commonValue(groupRecords, record => ixmlFieldValue(record, "TAKE")),
+        tape: commonValue(groupRecords, record => ixmlFieldValue(record, "TAPE")),
+        timecodeRate: commonValue(groupRecords, record => record.ixmlInfo?.timecodeRate?.value || ""),
+        timecodeFlag: commonValue(groupRecords, record => record.ixmlInfo?.timecodeFlag?.value || ""),
+        originationDate: commonValue(groupRecords, record => record.bextInfo?.originationDate || ""),
+        originationTime: commonValue(groupRecords, record => record.bextInfo?.originationTime || ""),
+      };
+    }
+
+    function bextChunkDataForCombine(baseRecord, sourceInfo, tracks) {
+      const data = new Uint8Array(858);
+      const view = new DataView(data.buffer);
+      writeAsciiPaddedMultiline(data, 0, 256, combineBextDescription(sourceInfo, tracks));
+      writeAsciiPadded(data, 256, 32, "Audio TC Change");
+      writeAsciiPadded(data, 288, 32, "AudioTCChangeCombine");
+      writeAsciiFixed(data, 320, 10, sourceInfo.originationDate);
+      writeAsciiFixed(data, 330, 8, sourceInfo.originationTime);
+      view.setBigUint64(338, baseRecord.oldTimeReference, LITTLE);
+      view.setUint16(346, 1, LITTLE);
+      return data;
+    }
+
+    function ixmlOptionalLine(tag, value) {
+      return value ? `\t<${tag}>${xmlEscape(value)}</${tag}>` : null;
+    }
+
+    function ixmlTextForCombine(baseRecord, sourceInfo, tracks) {
+      const parts = ixmlTimestampParts(baseRecord.oldTimeReference);
+      const trackXml = tracks.map((track, index) => [
+        "\t\t<TRACK>",
+        `\t\t\t<CHANNEL_INDEX>${track.channelIndexValue}</CHANNEL_INDEX>`,
+        `\t\t\t<INTERLEAVE_INDEX>${index + 1}</INTERLEAVE_INDEX>`,
+        `\t\t\t<NAME>${xmlEscape(track.channelName)}</NAME>`,
+        "\t\t</TRACK>",
+      ].join("\r\n")).join("\r\n");
+      return [
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        "<BWFXML>",
+        "\t<IXML_VERSION>1.5</IXML_VERSION>",
+        ixmlOptionalLine("PROJECT", sourceInfo.project),
+        ixmlOptionalLine("SCENE", sourceInfo.scene),
+        ixmlOptionalLine("TAKE", sourceInfo.take),
+        ixmlOptionalLine("TAPE", sourceInfo.tape),
+        ixmlOptionalLine("TIMECODE_RATE", sourceInfo.timecodeRate),
+        ixmlOptionalLine("TIMECODE_FLAG", sourceInfo.timecodeFlag),
+        `\t<TIMESTAMP_SAMPLE_RATE>${baseRecord.sampleRate}</TIMESTAMP_SAMPLE_RATE>`,
+        `\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>${parts.hi.toString().padStart(10, "0")}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>`,
+        `\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>${parts.lo.toString().padStart(10, "0")}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>`,
+        "\t<TRACK_LIST>",
+        `\t\t<TRACK_COUNT>${tracks.length}</TRACK_COUNT>`,
+        trackXml,
+        "\t</TRACK_LIST>",
+        "</BWFXML>",
+        "",
+      ].filter(line => line !== null).join("\r\n");
+    }
+
+    function fmtChunkDataForCombine(baseRecord, channels, blockAlign) {
+      const data = new Uint8Array(16);
+      const view = new DataView(data.buffer);
+      view.setUint16(0, baseRecord.audioFormat, LITTLE);
+      view.setUint16(2, channels, LITTLE);
+      view.setUint32(4, baseRecord.sampleRate, LITTLE);
+      view.setUint32(8, baseRecord.sampleRate * blockAlign, LITTLE);
+      view.setUint16(12, blockAlign, LITTLE);
+      view.setUint16(14, baseRecord.bitsPerSample, LITTLE);
+      return data;
+    }
+
+    function safeWaveBaseName(value) {
+      return String(value || "combined")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^\w.-]+/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "") || "combined";
+    }
+
+    async function writeChunk(writable, state, id, data) {
+      await writable.write({ type: "write", position: state.position, data: chunkHeader(id, data.byteLength) });
+      state.position += 8;
+      await writable.write({ type: "write", position: state.position, data });
+      state.position += data.byteLength;
+      if (data.byteLength & 1) {
+        await writable.write({ type: "write", position: state.position, data: new Uint8Array([0]) });
+        state.position += 1;
+      }
+    }
+
+    async function writeCombinedData(writable, state, plan, progressBase, progressTotal) {
+      const { first, tracks, bytesPerSample, blockAlign, durationSamples, dataSize } = plan;
+      await writable.write({ type: "write", position: state.position, data: chunkHeader("data", dataSize) });
+      state.position += 8;
+      const framesPerChunk = Math.max(1, Math.floor((4 * 1024 * 1024) / blockAlign));
+      let framesDone = 0n;
+
+      while (framesDone < durationSamples) {
+        const framesLeft = durationSamples - framesDone;
+        const framesThisChunk = Number(framesLeft < BigInt(framesPerChunk) ? framesLeft : BigInt(framesPerChunk));
+        const sourceBuffers = new Map();
+        for (const track of tracks) {
+          if (sourceBuffers.has(recordKey(track.record))) continue;
+          const bytesToRead = framesThisChunk * track.record.blockAlign;
+          const position = track.record.dataOffset + Number(framesDone) * track.record.blockAlign;
+          const sourceView = await readDataView(track.record.file, position, bytesToRead);
+          sourceBuffers.set(recordKey(track.record), new Uint8Array(sourceView.buffer));
+        }
+
+        const out = new Uint8Array(framesThisChunk * blockAlign);
+        for (let frame = 0; frame < framesThisChunk; frame++) {
+          for (let outTrack = 0; outTrack < tracks.length; outTrack++) {
+            const track = tracks[outTrack];
+            const source = sourceBuffers.get(recordKey(track.record));
+            const sourceOffset = frame * track.record.blockAlign + track.channelIndex * bytesPerSample;
+            const destOffset = frame * blockAlign + outTrack * bytesPerSample;
+            out.set(source.subarray(sourceOffset, sourceOffset + bytesPerSample), destOffset);
+          }
+        }
+
+        await writable.write({ type: "write", position: state.position, data: out });
+        state.position += out.byteLength;
+        framesDone += BigInt(framesThisChunk);
+        updateWriteProgress("正在合并 Poly…", recordLabel(first), progressBase + Number(framesDone) / Number(durationSamples), progressTotal);
+      }
+      if (dataSize & 1) {
+        await writable.write({ type: "write", position: state.position, data: new Uint8Array([0]) });
+        state.position += 1;
+      }
     }
 
     function timestampForFilename() {
@@ -3633,6 +4487,7 @@
       els.sampleRates.textContent = sampleRates.size ? Array.from(sampleRates).join(", ") : "-";
       els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
       els.extractLtcBtn.disabled = records.length === 0;
+      els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
       els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(result => result.ok);
       els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;
     }
@@ -3975,6 +4830,16 @@
       for (let i = 0; i < safe.length; i++) target[offset + i] = safe.charCodeAt(i);
     }
 
+    function writeAsciiPaddedMultiline(target, offset, length, text) {
+      const safe = String(text).replace(/[^\x09\x0a\x0d\x20-\x7e]/g, " ").slice(0, Math.max(0, length - 1));
+      for (let i = 0; i < safe.length; i++) target[offset + i] = safe.charCodeAt(i);
+    }
+
+    function writeAsciiFixed(target, offset, length, text) {
+      const safe = String(text).replace(/[^\x20-\x7e]/g, " ").slice(0, length);
+      for (let i = 0; i < safe.length; i++) target[offset + i] = safe.charCodeAt(i);
+    }
+
     function bextChunkData(record, value) {
       const data = new Uint8Array(602);
       const view = new DataView(data.buffer);
@@ -3985,11 +4850,11 @@
       const hh = String(now.getHours()).padStart(2, "0");
       const mi = String(now.getMinutes()).padStart(2, "0");
       const ss = String(now.getSeconds()).padStart(2, "0");
-      writeAsciiPadded(data, 0, 256, `Audio TC Change generated bext for ${record.name}`);
+      writeAsciiPaddedMultiline(data, 0, 256, `Audio TC Change generated bext for ${record.name}`);
       writeAsciiPadded(data, 256, 32, "Audio TC Change");
       writeAsciiPadded(data, 288, 32, "AudioTCChange");
-      writeAsciiPadded(data, 320, 10, `${yyyy}-${mm}-${dd}`);
-      writeAsciiPadded(data, 330, 8, `${hh}:${mi}:${ss}`);
+      writeAsciiFixed(data, 320, 10, `${yyyy}-${mm}-${dd}`);
+      writeAsciiFixed(data, 330, 8, `${hh}:${mi}:${ss}`);
       view.setBigUint64(338, value, LITTLE);
       view.setUint16(346, 1, LITTLE);
       return data;
@@ -4091,6 +4956,7 @@
         ? await scanWave(preview.fileHandle, {
           relativePath: preview.relativePath,
           parentPath: preview.parentPath,
+          parentHandle: preview.parentHandle,
         })
         : preview;
       const patch = new ArrayBuffer(8);
@@ -4197,6 +5063,7 @@
             const freshForMute = await scanWave(record.fileHandle, {
               relativePath: record.relativePath,
               parentPath: record.parentPath,
+              parentHandle: record.parentHandle,
             });
             const writable = await record.fileHandle.createWritable({ keepExistingData: true });
             try {
@@ -4249,6 +5116,7 @@
       records = await Promise.all(records.map(record => scanWave(record.fileHandle, {
         relativePath: record.relativePath,
         parentPath: record.parentPath,
+        parentHandle: record.parentHandle,
       })));
       refreshTakeGroups();
     }
@@ -4298,6 +5166,8 @@
         els.confirmCopy.innerHTML = copy;
         els.confirmCancelBtn.textContent = cancelText;
         els.confirmAltBtn.hidden = true;
+        els.confirmAltBtn.textContent = "";
+        els.confirmAltBtn.onclick = null;
         els.confirmWriteBtn.textContent = confirmText;
         els.confirmWriteBtn.classList.toggle("danger", danger);
         els.confirmOverlay.classList.add("show");
@@ -4324,6 +5194,124 @@
             "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
           ].join("<br>"),
       });
+    }
+
+    function confirmCombinePoly(groups) {
+      const trackCounts = groups.map(([key, groupRecords]) => {
+        const tracks = combineTrackPlan(groupRecords);
+        return `${shortGroupLabel(key)}：${tracks.length} 轨`;
+      });
+      const batchMode = groups.length > 1;
+      return showConfirmDialog({
+        title: "合并为 Poly WAV？",
+        confirmText: batchMode ? "选择输出文件夹" : "选择保存位置",
+        copy: [
+          `将把 <strong>${groups.length}</strong> 个分轨 take 合并为 Poly WAV。`,
+          trackCounts.slice(0, 6).join("<br>"),
+          groups.length > 6 ? `还有 ${groups.length - 6} 个 take…` : "",
+          batchMode ? "批量合并会让你选择一个输出文件夹；同名文件会被覆盖。" : "",
+          batchMode ? "由于 Chrome 的安全限制，请不要直接选择“下载”“文稿”“桌面”等受保护的常用文件夹；请先在里面新建一个子文件夹再选择。" : "",
+          "原始文件不会被修改。"
+        ].filter(Boolean).join("<br>"),
+      });
+    }
+
+    async function writeCombinedPolyToWritable(key, groupRecords, writable, outputName, progressBase = 0, progressTotal = 1) {
+      const plan = validateCombineGroup(groupRecords);
+      const groupName = safeWaveBaseName(shortGroupLabel(key));
+      const sourceInfo = combineSourceInfo(groupRecords);
+      const state = { position: 0 };
+      const riffHeader = new Uint8Array(12);
+      riffHeader.set([82, 73, 70, 70], 0);
+      riffHeader.set([87, 65, 86, 69], 8);
+
+      try {
+        await writable.write({ type: "write", position: state.position, data: riffHeader });
+        state.position += riffHeader.byteLength;
+        await writeChunk(writable, state, "bext", bextChunkDataForCombine(plan.first, sourceInfo, plan.tracks));
+        await writeChunk(writable, state, "iXML", new TextEncoder().encode(ixmlTextForCombine(plan.first, sourceInfo, plan.tracks)));
+        await writeChunk(writable, state, "fmt ", fmtChunkDataForCombine(plan.first, plan.tracks.length, plan.blockAlign));
+        await writeCombinedData(writable, state, plan, progressBase, progressTotal);
+
+        const riffSize = state.position - 8;
+        if (riffSize > 0xffffffff) throw new Error(`${groupName}: 合并后超过 RIFF 4GB 限制`);
+        const sizePatch = new Uint8Array(4);
+        new DataView(sizePatch.buffer).setUint32(0, riffSize, LITTLE);
+        await writable.write({ type: "write", position: 4, data: sizePatch });
+      } finally {
+        await writable.close();
+      }
+      return { name: outputName, channels: plan.tracks.length, durationSamples: plan.durationSamples, sampleRate: plan.first.sampleRate };
+    }
+
+    async function writeCombinedPolyFile(key, groupRecords, progressBase = 0, progressTotal = 1) {
+      if (!("showSaveFilePicker" in window)) throw new Error("当前浏览器不支持直接保存 Poly WAV；请使用 Chrome / Edge");
+      const groupName = safeWaveBaseName(shortGroupLabel(key));
+      const handle = await window.showSaveFilePicker({
+        suggestedName: `${groupName}_Poly.WAV`,
+        types: [{
+          description: "Wave Audio",
+          accept: { "audio/wav": [".wav"] },
+        }],
+      });
+      const writable = await handle.createWritable();
+      return writeCombinedPolyToWritable(key, groupRecords, writable, handle.name, progressBase, progressTotal);
+    }
+
+    async function writeCombinedPolyToDirectory(directory, key, groupRecords, progressBase = 0, progressTotal = 1) {
+      const groupName = safeWaveBaseName(shortGroupLabel(key));
+      const outputName = `${groupName}_Poly.WAV`;
+      const handle = await directory.getFileHandle(outputName, { create: true });
+      const writable = await handle.createWritable();
+      return writeCombinedPolyToWritable(key, groupRecords, writable, outputName, progressBase, progressTotal);
+    }
+
+    async function combinePolyFiles() {
+      const groups = combineEligibleGroups();
+      if (!groups.length) throw new Error("没有识别到可合并的分轨 take");
+      if (groups.length > 1 && !("showDirectoryPicker" in window)) {
+        throw new Error("当前浏览器不支持批量选择输出目录；请使用 Chrome / Edge，或逐个保存");
+      }
+      const ok = await confirmCombinePoly(groups);
+      if (!ok) return;
+      let batchDirectory = null;
+      if (groups.length > 1) {
+        try {
+          batchDirectory = await window.showDirectoryPicker({ mode: "readwrite" });
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          throw new Error("无法使用这个输出文件夹。Chrome 不允许网页直接写入某些受保护的常用文件夹（如“下载”“文稿”“桌面”本身）；请在其中新建并选择一个子文件夹，例如 Downloads/AudioTCChange_Poly。");
+        }
+      }
+
+      setState("合并中", "warn");
+      els.combinePolyBtn.disabled = true;
+      els.statusLine.textContent = "Combining split tracks...";
+      updateWriteProgress("正在合并 Poly…", "", 0, groups.length);
+      els.progressOverlay.classList.add("show");
+
+      const results = [];
+      try {
+        for (let i = 0; i < groups.length; i++) {
+          const [key, groupRecords] = groups[i];
+          updateWriteProgress("正在合并 Poly…", shortGroupLabel(key), i, groups.length);
+          const result = groups.length > 1
+            ? await writeCombinedPolyToDirectory(batchDirectory, key, groupRecords, i, groups.length)
+            : await writeCombinedPolyFile(key, groupRecords, i, groups.length);
+          results.push(result);
+          updateWriteProgress("正在合并 Poly…", result.name, i + 1, groups.length);
+        }
+        setState("完成");
+        els.statusLine.textContent = `Poly 合并完成：${results.length} 个文件`;
+        log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}`);
+        els.toast.textContent = `✅ Poly 合并完成 — ${results.length} 个文件`;
+        els.toast.classList.add("show");
+        setTimeout(() => els.toast.classList.remove("show"), 4500);
+      } finally {
+        els.progressOverlay.classList.remove("show");
+        updateWriteProgress("正在写入…", "", 0, groups.length || 1);
+        els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
+      }
     }
 
     function confirmLtcFpsMismatch({ currentValue, detectedValue, detectedTimecode, group }) {
@@ -4549,10 +5537,13 @@
     els.undoBtn.addEventListener("click", () => guarded(undoLastWrite));
     els.extractLtcBtn.addEventListener("click", () => guarded(extractLtcFromFiles));
     els.exportMetadataBtn.addEventListener("click", () => guarded(exportMetadata));
+    els.combinePolyBtn.addEventListener("click", () => guarded(combinePolyFiles));
     els.writeLtcBtn.addEventListener("click", () => guarded(writeLtcTimecode));
-    els.calcBtn.addEventListener("click", () => guarded(calculateTimecodeDifference));
     els.useCalcBtn.addEventListener("click", () => guarded(useCalculatorResult));
     els.calcOpBtn.addEventListener("click", toggleCalculatorOperator);
+    els.calcBModeTimecodeBtn.addEventListener("click", () => setCalcBMode("timecode"));
+    els.calcBModeFramesBtn.addEventListener("click", () => setCalcBMode("frames"));
+    els.calcSwapBtn.addEventListener("click", swapCalculatorTimecodes);
     els.offsetSignBtn.addEventListener("click", toggleOffsetSign);
     els.tcUpBtn.addEventListener("click", () => {
       try { stepTimecodeByFrames(els.offsetInput, 1); } catch (error) { log(`ERROR: ${error.message}`); }
@@ -4591,43 +5582,80 @@
 
     // Calculator stepper buttons
     els.calcStartUpBtn.addEventListener("click", () => {
-      try { stepTimecodeByFrames(els.calcStartInput, 1, false); } catch (error) { log(`ERROR: ${error.message}`); }
+      try { stepTimecodeByFrames(els.calcStartInput, 1, false); refreshCalculator(); } catch (error) { log(`ERROR: ${error.message}`); }
     });
     els.calcStartDownBtn.addEventListener("click", () => {
-      try { stepTimecodeByFrames(els.calcStartInput, -1, false); } catch (error) { log(`ERROR: ${error.message}`); }
+      try { stepTimecodeByFrames(els.calcStartInput, -1, false); refreshCalculator(); } catch (error) { log(`ERROR: ${error.message}`); }
     });
     els.calcEndUpBtn.addEventListener("click", () => {
-      try { stepTimecodeByFrames(els.calcEndInput, 1, false); } catch (error) { log(`ERROR: ${error.message}`); }
+      try { stepTimecodeByFrames(els.calcEndInput, 1, false); refreshCalculator(); } catch (error) { log(`ERROR: ${error.message}`); }
     });
     els.calcEndDownBtn.addEventListener("click", () => {
-      try { stepTimecodeByFrames(els.calcEndInput, -1, false); } catch (error) { log(`ERROR: ${error.message}`); }
+      try { stepTimecodeByFrames(els.calcEndInput, -1, false); refreshCalculator(); } catch (error) { log(`ERROR: ${error.message}`); }
+    });
+
+    els.calcFrameInput.addEventListener("focus", () => els.calcFrameInput.select());
+    els.calcFrameInput.addEventListener("input", () => {
+      normalizeCalcFrameInput();
+      refreshCalculator();
+    });
+    els.calcFrameInput.addEventListener("paste", event => {
+      event.preventDefault();
+      els.calcFrameInput.value = event.clipboardData.getData("text");
+      normalizeCalcFrameInput();
+      refreshCalculator();
+    });
+    els.calcFrameInput.addEventListener("blur", () => {
+      normalizeCalcFrameInput();
+      refreshCalculator();
+    });
+    els.calcFrameInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); refreshCalculator(); return; }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const current = calcFrameValue();
+        const next = event.key === "ArrowUp" ? current + 1n : (current > 0n ? current - 1n : 0n);
+        els.calcFrameInput.value = next.toString();
+        refreshCalculator();
+      }
     });
 
     for (const input of [els.calcStartInput, els.calcEndInput]) {
       input.addEventListener("focus", () => input.select());
-      input.addEventListener("input", () => normalizeTimecodeInput(input, null, false));
+      input.addEventListener("input", () => {
+        normalizeTimecodeInput(input, null, false);
+        refreshCalculator();
+      });
       input.addEventListener("paste", event => {
         event.preventDefault();
         insertTimecodeDigits(input, event.clipboardData.getData("text"), false);
+        refreshCalculator();
       });
-      input.addEventListener("blur", () => normalizeTimecodeInput(input, null, false));
+      input.addEventListener("blur", () => {
+        normalizeTimecodeInput(input, null, false);
+        refreshCalculator();
+      });
       input.addEventListener("keydown", event => {
-        if (event.key === "Enter") { guarded(calculateTimecodeDifference); return; }
+        if (event.key === "Enter") { event.preventDefault(); refreshCalculator(); return; }
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         try {
           if (/^\d$/.test(event.key)) {
             event.preventDefault();
             insertTimecodeDigits(input, event.key, false);
+            refreshCalculator();
             return;
           }
           if (event.key === "Backspace" || event.key === "Delete") {
             event.preventDefault();
             deleteTimecodeDigit(input, event.key === "Backspace", false);
+            refreshCalculator();
             return;
           }
           if (event.key === "ArrowUp" || event.key === "ArrowDown") {
             event.preventDefault();
             stepTimecodeAtCaret(input, event.key === "ArrowUp" ? 1 : -1, false);
+            refreshCalculator();
           }
         } catch (error) {
           log(`ERROR: ${error.message}`);
@@ -4638,13 +5666,10 @@
     initCustomSelect(els.fpsInput, els.fpsSelectButton, els.fpsSelectMenu);
 
     els.fpsInput.addEventListener("change", () => {
-      calculatorOffset = null;
-      els.useCalcBtn.disabled = true;
-      els.calcResult.textContent = "00:00:00:00";
       normalizeTimecodeInput(els.offsetInput);
       normalizeTimecodeInput(els.calcStartInput, null, false);
       normalizeTimecodeInput(els.calcEndInput, null, false);
-      try { calculateTimecodeDifference(); } catch (e) {}
+      refreshCalculator();
       renderRows();
     });
 
@@ -4674,6 +5699,7 @@
           records.push(await scanWave(entry, {
             relativePath,
             parentPath: basePath,
+            parentHandle: handle,
           }));
         }
       }
@@ -4698,6 +5724,7 @@
       els.previewBtn.disabled = false;
       els.extractLtcBtn.disabled = false;
       els.exportMetadataBtn.disabled = true;
+      els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
       els.writeLtcBtn.disabled = true;
       setState("已载入");
       const takeText = takeGroupKeys.size ? `，识别到 ${takeGroupKeys.size} 个分轨 take` : "";
@@ -4826,7 +5853,7 @@
       });
     }
 
-    els.calcResult.textContent = "00:00:00:00";
+    refreshCalculator();
     setupPwa();
     setupDragAndDrop();
   </script>
