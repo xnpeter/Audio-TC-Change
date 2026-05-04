@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v0.1.1-202a36">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v0.2.0-202a36">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -72,6 +72,7 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 - 支持混合帧率素材的时间码偏移。
 - 读取 iXML 中的帧率信息，并在文件 metadata 与界面帧率不一致时提示确认。
 - 针对 ZOOM H 系列多轨 mono 文件结构做分组显示，例如 `ZOOM0001_Tr1.WAV`、`ZOOM0001_Tr2.WAV`。
+- 将 ZOOM H 系列分轨 mono/stereo take 批量合并为 Poly WAV，并写入 iXML track name。
 - 写入前预览结果，写入后生成 CSV 修改清单。
 - 支持撤销上一次写入。
 
@@ -157,8 +158,7 @@ Chrome 或 Edge 推荐使用，因为写回本地文件依赖 File System Access
 
 - 支持 MOV、MP4 等视频文件的时码修改与 LTC 提取。
 - 继续优化低质量 LTC 的提取能力。
-- 增加类似 Wave Agent 的 mono/poly WAV 转换功能。
-- 支持 mono 合并成 poly、poly 拆分成 mono。
+- 支持 poly 拆分成 mono。
 
 ---
 
@@ -214,6 +214,7 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 - Handle mixed-frame-rate material during offset operations.
 - Read iXML frame-rate metadata and warn when it differs from the UI setting.
 - Group ZOOM H-series style split mono files, such as `ZOOM0001_Tr1.WAV` and `ZOOM0001_Tr2.WAV`.
+- Batch-combine ZOOM H-series split mono/stereo takes into Poly WAV with iXML track names.
 - Preview before writing and generate a CSV manifest after writing.
 - Undo the previous write operation.
 
@@ -297,8 +298,7 @@ Write-back mode directly modifies WAV/BWF metadata. For production material, bac
 
 - MOV/MP4 timecode editing and LTC extraction.
 - Better extraction from low-quality LTC recordings.
-- Wave Agent-style mono/poly WAV conversion.
-- Mono-to-poly and poly-to-mono workflows.
+- Poly-to-mono split workflows.
 
 ## License
 

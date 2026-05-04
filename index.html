@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Audio TC Change</title>
-  <meta name="app-version" content="0.1.1">
   <meta name="theme-color" content="#202a36">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Audio TC Change">
@@ -1602,7 +1601,6 @@
   <script>
     const LITTLE = true;
     const WAV_SUFFIX = /\.(wav|wave)$/i;
-    const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "dev";
 
     const els = {
       appVersionBadge: document.getElementById("appVersionBadge"),
@@ -1664,7 +1662,22 @@
       confirmWriteBtn: document.getElementById("confirmWriteBtn"),
     };
 
-    els.appVersionBadge.textContent = `v${APP_VERSION}`;
+    async function appVersion() {
+      try {
+        const response = await fetch("./bwf-timecode-sw.js", { cache: "no-store" });
+        if (!response.ok) throw new Error("service worker version unavailable");
+        const text = await response.text();
+        return text.match(/CACHE_NAME\s*=\s*["'][^"']*v([^"']+)["']/)?.[1] || "dev";
+      } catch (error) {
+        return "dev";
+      }
+    }
+
+    async function renderAppVersion() {
+      els.appVersionBadge.textContent = `v${await appVersion()}`;
+    }
+
+    renderAppVersion();
 
     let directoryHandle = null;
     let records = [];
