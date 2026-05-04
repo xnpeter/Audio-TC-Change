@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Audio TC Change</title>
+  <meta name="app-version" content="0.1.0">
   <meta name="theme-color" content="#202a36">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Audio TC Change">
@@ -104,6 +105,22 @@
       margin: 0;
       font-weight: 700;
       letter-spacing: 0;
+    }
+
+    .app-title {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .app-version {
+      color: #9fb0c3;
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: 0;
+      transform: translateY(-1px);
     }
 
     .title-block {
@@ -1066,7 +1083,7 @@
   <div class="app">
     <header>
       <div class="title-block">
-        <h1>Audio TC Change</h1>
+        <h1 class="app-title">Audio TC Change <span id="appVersionBadge" class="app-version"></span></h1>
         <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码</div>
       </div>
       <div class="header-meta">
@@ -1249,8 +1266,10 @@
   <script>
     const LITTLE = true;
     const WAV_SUFFIX = /\.(wav|wave)$/i;
+    const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || "dev";
 
     const els = {
+      appVersionBadge: document.getElementById("appVersionBadge"),
       offsetSignBtn: document.getElementById("offsetSignBtn"),
       offsetInput: document.getElementById("offsetInput"),
       tcUpBtn: document.getElementById("tcUpBtn"),
@@ -1298,6 +1317,8 @@
       confirmCancelBtn: document.getElementById("confirmCancelBtn"),
       confirmWriteBtn: document.getElementById("confirmWriteBtn"),
     };
+
+    els.appVersionBadge.textContent = `v${APP_VERSION}`;
 
     let directoryHandle = null;
     let records = [];
@@ -1984,6 +2005,7 @@
       let audioFormat = null;
       let timeReferenceOffset = null;
       let oldTimeReference = null;
+      let hasBext = false;
       let ixmlInfo = null;
       let dataOffset = null;
       let dataSize = null;
@@ -2005,6 +2027,7 @@
           bitsPerSample = fmt.getUint16(14, LITTLE);
         } else if (chunkId === "bext") {
           if (chunkSize < 346) throw new Error(`${name}: bext chunk 过短`);
+          hasBext = true;
           timeReferenceOffset = chunkStart + 338;
           const timeReference = await readDataView(file, timeReferenceOffset, 8);
           oldTimeReference = timeReference.getBigUint64(0, LITTLE);
@@ -2020,9 +2043,11 @@
       }
 
       if (sampleRate === null || blockAlign === null) throw new Error(`${name}: 缺少 fmt chunk`);
-      if (oldTimeReference === null || timeReferenceOffset === null) throw new Error(`${name}: 缺少 BWF bext TimeReference`);
       if (dataSize === null || dataOffset === null) throw new Error(`${name}: 缺少 data chunk`);
       if (dataSize % blockAlign !== 0) throw new Error(`${name}: data chunk 未按 block align 对齐`);
+      if (oldTimeReference === null) {
+        oldTimeReference = ixmlTimeReferenceValue(ixmlInfo) ?? 0n;
+      }
 
       return {
         fileHandle,
@@ -2035,6 +2060,7 @@
         bitsPerSample,
         blockAlign,
         audioFormat,
+        hasBext,
         timeReferenceOffset,
         oldTimeReference,
         ixmlInfo,
@@ -3104,8 +3130,10 @@
       };
     }
 
-    async function detectLtcAutoWorker(record, fps, scanSeconds = 60) {
-      const sampleLimit = BigInt(Math.max(record.sampleRate * scanSeconds, record.sampleRate));
+    async function detectLtcAutoWorker(record, fps, scanSeconds = null) {
+      const sampleLimit = scanSeconds == null
+        ? record.durationSamples
+        : BigInt(Math.max(record.sampleRate * scanSeconds, record.sampleRate));
       const maxSamples = Number(record.durationSamples < sampleLimit ? record.durationSamples : sampleLimit);
       const bytesToRead = Math.min(record.dataSize, maxSamples * record.blockAlign);
       const buffer = await record.file.slice(record.dataOffset, record.dataOffset + bytesToRead).arrayBuffer();
@@ -3156,8 +3184,11 @@
         if (isHighQualityFastLtc(fast)) {
           return tagLtcAutoResult(fast, { fastScan: true });
         }
-        const full = await detectLtcAutoWorker(record, fps, 60);
-        return tagLtcAutoResult(full, { fastFallback: Boolean(fast?.best || fast?.rejectedChannels?.length) });
+        const full = await detectLtcAutoWorker(record, fps, null);
+        return tagLtcAutoResult(full, {
+          fullFileScan: true,
+          fastFallback: Boolean(fast?.best || fast?.rejectedChannels?.length),
+        });
       }
       return LtcDecoder.detectAuto(record, fps);
     }
@@ -3558,7 +3589,7 @@
                 }
                 const dropNote = detected.dropMismatch ? " · DF标记与当前设置不符" : "";
                 const logStartTc = samplesToTimecode(detected.newTimeReference, groupRecords[0].sampleRate, detected.fps || fps);
-                const scanMode = detected.fastScan ? "fast" : "full";
+                const scanMode = detected.fastScan ? "fast" : detected.fullFileScan ? "full-file" : "full";
                 log(`LTC OK: ${groupLabel(groupRecords[0])} -> start ${logStartTc}, source frame ${detected.timecode} @ ${detected.sampleOffset} samples, ${detected.fpsLabel || fpsLabel(fps)}${dropNote}, source ${detected.sourceRecord.name}, ${detected.lockedFrames} frames, ${scanMode}, quality ${detected.qualityLabel}, half error ${(detected.halfBitError * 100).toFixed(3)}%, confidence ${Math.round(detected.confidence * 100)}%`);
               } else {
                 for (const record of groupRecords) {
@@ -3687,6 +3718,31 @@
       return header;
     }
 
+    function writeAsciiPadded(target, offset, length, text) {
+      const safe = String(text).replace(/[^\x20-\x7e]/g, " ").slice(0, Math.max(0, length - 1));
+      for (let i = 0; i < safe.length; i++) target[offset + i] = safe.charCodeAt(i);
+    }
+
+    function bextChunkData(record, value) {
+      const data = new Uint8Array(602);
+      const view = new DataView(data.buffer);
+      const now = new Date();
+      const yyyy = String(now.getFullYear()).padStart(4, "0");
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mi = String(now.getMinutes()).padStart(2, "0");
+      const ss = String(now.getSeconds()).padStart(2, "0");
+      writeAsciiPadded(data, 0, 256, `Audio TC Change generated bext for ${record.name}`);
+      writeAsciiPadded(data, 256, 32, "Audio TC Change");
+      writeAsciiPadded(data, 288, 32, "AudioTCChange");
+      writeAsciiPadded(data, 320, 10, `${yyyy}-${mm}-${dd}`);
+      writeAsciiPadded(data, 330, 8, `${hh}:${mi}:${ss}`);
+      view.setBigUint64(338, value, LITTLE);
+      view.setUint16(346, 1, LITTLE);
+      return data;
+    }
+
     async function rewriteWaveTimeReference(record, value, writable, targetIxmlInfo = record.ixmlInfo) {
       const file = await record.fileHandle.getFile();
       const buffer = await file.arrayBuffer();
@@ -3696,6 +3752,7 @@
       }
 
       const descriptors = [];
+      let hasBext = false;
       let pos = 12;
       const limit = Math.min(view.byteLength, view.getUint32(4, LITTLE) + 8);
       while (pos + 8 <= limit) {
@@ -3707,6 +3764,7 @@
 
         if (id === "bext") {
           if (size < 346) throw new Error(`${record.name}: bext chunk 过短`);
+          hasBext = true;
           data = new Uint8Array(data);
           new DataView(data.buffer, data.byteOffset, data.byteLength).setBigUint64(338, value, LITTLE);
         } else if (id === "iXML" && record.ixmlInfo) {
@@ -3716,6 +3774,13 @@
 
         descriptors.push({ id, data });
         pos = start + size + (size & 1);
+      }
+
+      if (!hasBext) {
+        const insertAt = Math.max(1, descriptors.findIndex(descriptor => descriptor.id === "data"));
+        const descriptor = { id: "bext", data: bextChunkData(record, value) };
+        if (insertAt > 0) descriptors.splice(insertAt, 0, descriptor);
+        else descriptors.push(descriptor);
       }
 
       let riffSize = 4;
@@ -3780,7 +3845,8 @@
       new DataView(patch).setBigUint64(0, value, LITTLE);
       const ownWritable = !writable;
       const restoreShape = shouldRestoreIxmlShape(record, preview.ixmlInfo, value);
-      const needsRewrite = restoreShape || ixmlNeedsRewrite(record, value);
+      const needsBext = !record.hasBext || record.timeReferenceOffset === null;
+      const needsRewrite = needsBext || restoreShape || ixmlNeedsRewrite(record, value);
       const target = writable || await record.fileHandle.createWritable({ keepExistingData: !needsRewrite });
       try {
         if (needsRewrite) {
