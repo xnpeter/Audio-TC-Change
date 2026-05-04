@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Audio TC Change</title>
-  <meta name="app-version" content="0.1.0">
+  <meta name="app-version" content="0.1.1">
   <meta name="theme-color" content="#202a36">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Audio TC Change">
@@ -183,7 +183,7 @@
       margin: 0 var(--page-x);
       padding: 16px;
       display: grid;
-      grid-template-columns: var(--timecode-width) 122px minmax(150px, auto) minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(280px, 1fr);
+      grid-template-columns: var(--timecode-width) 122px minmax(150px, auto) minmax(86px, auto) minmax(86px, auto) minmax(86px, auto) minmax(150px, auto) minmax(280px, 1fr);
       gap: 12px;
       align-items: end;
       justify-content: start;
@@ -1180,6 +1180,7 @@
       <button id="previewBtn" class="primary" title="预览修改" disabled>预览</button>
       <button id="applyBtn" class="danger" title="写入" disabled>写入</button>
       <button id="undoBtn" title="撤销上一次写入" disabled>撤销</button>
+      <button id="exportMetadataBtn" type="button" disabled>导出为元数据</button>
 
       <div class="ltc-tools" aria-label="extract timecode from audio waveform">
         <div class="ltc-tools-title">从波形提取时码（特别适配ZOOM H6等多轨Mono文件）</div>
@@ -1257,6 +1258,7 @@
       <div class="confirm-copy" id="confirmCopy"></div>
       <div class="confirm-actions">
         <button id="confirmCancelBtn" type="button">取消</button>
+        <button id="confirmAltBtn" type="button" hidden>ALE</button>
         <button id="confirmWriteBtn" class="danger" type="button">确认写入</button>
       </div>
     </div>
@@ -1292,6 +1294,7 @@
       applyBtn: document.getElementById("applyBtn"),
       undoBtn: document.getElementById("undoBtn"),
       extractLtcBtn: document.getElementById("extractLtcBtn"),
+      exportMetadataBtn: document.getElementById("exportMetadataBtn"),
       writeLtcBtn: document.getElementById("writeLtcBtn"),
       fileCount: document.getElementById("fileCount"),
       offsetFrames: document.getElementById("offsetFrames"),
@@ -1315,6 +1318,7 @@
       confirmTitle: document.getElementById("confirmTitle"),
       confirmCopy: document.getElementById("confirmCopy"),
       confirmCancelBtn: document.getElementById("confirmCancelBtn"),
+      confirmAltBtn: document.getElementById("confirmAltBtn"),
       confirmWriteBtn: document.getElementById("confirmWriteBtn"),
     };
 
@@ -3248,7 +3252,254 @@
 
     function toCsvValue(value) {
       const text = String(value);
-      return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+      return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    function resolveMetadataItems() {
+      if (previews.length) {
+        return previews.map(preview => ({
+          record: preview,
+          newTimeReference: preview.newTimeReference,
+          fps: preview.fps || recordFps(preview),
+          fpsValue: preview.fpsValue || recordFpsValue(preview),
+          source: "offset",
+          description: `Audio TC Change offset ${preview.offset?.label || ""}`.trim(),
+        }));
+      }
+
+      return records
+        .map(record => {
+          const ltc = ltcResults.get(recordKey(record));
+          if (ltc?.newTimeReference == null || !ltc?.timecode) return null;
+          return {
+            record,
+            newTimeReference: ltc.newTimeReference,
+            fps: ltc.fps || parseFps(ltc.fpsValue || recordFpsValue(record)),
+            fpsValue: ltc.fpsValue || recordFpsValue(record),
+            source: "ltc",
+            description: `Audio TC Change LTC ${ltc.timecode}`,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function resolveFpsLabel(fpsValue) {
+      const fps = parseFps(fpsValue);
+      const numeric = Number(fps.rate.n) / Number(fps.rate.d);
+      return numeric.toFixed(3);
+    }
+
+    function aleFpsLabel(fpsValue) {
+      const label = resolveFpsLabel(fpsValue);
+      return label.replace(/\.000$/, "");
+    }
+
+    function audioCodecLabel(record) {
+      if (record.audioFormat === 3) return "IEEE Float";
+      if (record.audioFormat === 1) return "Linear PCM";
+      return `WAVE format ${record.audioFormat}`;
+    }
+
+    function resolveMetadataCsv() {
+      const headers = [
+        "File Name", "Clip Directory", "Duration TC", "Shot Frame Rate",
+        "Audio Sample Rate", "Audio Channels", "Audio Codec", "Description",
+        "Start TC", "End TC", "Audio Bit Depth"
+      ];
+      const rows = resolveMetadataItems().map(({ record, newTimeReference, fps, fpsValue, description }) => {
+        const start = newTimeReference;
+        const end = start + record.durationSamples;
+        const startTc = samplesToTimecode(start, record.sampleRate, fps, { precise: false });
+        return {
+          "File Name": record.name,
+          "Clip Directory": record.parentPath || "",
+          "Duration TC": samplesToTimecode(record.durationSamples, record.sampleRate, fps, { precise: false }),
+          "Shot Frame Rate": resolveFpsLabel(fpsValue),
+          "Audio Sample Rate": record.sampleRate,
+          "Audio Channels": record.channels,
+          "Audio Codec": audioCodecLabel(record),
+          "Description": `${description} -> ${startTc}`,
+          "Start TC": startTc,
+          "End TC": samplesToTimecode(end, record.sampleRate, fps, { precise: false }),
+          "Audio Bit Depth": record.bitsPerSample,
+        };
+      });
+      return [headers.join(","), ...rows.map(row => headers.map(h => toCsvValue(row[h] ?? "")).join(","))].join("\r\n");
+    }
+
+    function toAleValue(value) {
+      return String(value ?? "").replace(/\t/g, " ").replace(/[\r\n]+/g, " ").trim();
+    }
+
+    function aleTracksLabel(record) {
+      return Array.from({ length: record.channels }, (_, index) => `A${index + 1}`).join("");
+    }
+
+    function aleMetadataText() {
+      const items = resolveMetadataItems();
+      const first = items[0];
+      const fpsText = first ? aleFpsLabel(first.fpsValue) : aleFpsLabel(els.fpsInput.value);
+      const headers = ["Name", "Start", "End", "Duration", "Tracks", "FPS", "Source File", "File Name", "Comments"];
+      const rows = items.map(({ record, newTimeReference, fps, fpsValue, description }) => {
+        const start = newTimeReference;
+        const end = start + record.durationSamples;
+        return [
+          record.name.replace(/\.[^.]+$/, ""),
+          samplesToTimecode(start, record.sampleRate, fps, { precise: false }),
+          samplesToTimecode(end, record.sampleRate, fps, { precise: false }),
+          samplesToTimecode(record.durationSamples, record.sampleRate, fps, { precise: false }),
+          aleTracksLabel(record),
+          aleFpsLabel(fpsValue),
+          recordLabel(record),
+          record.name,
+          description,
+        ].map(toAleValue).join("\t");
+      });
+      return [
+        "Heading",
+        "FIELD_DELIM\tTABS",
+        "VIDEO_FORMAT\t1080",
+        `FPS\t${fpsText}`,
+        "",
+        "Column",
+        headers.join("\t"),
+        "",
+        "Data",
+        ...rows,
+        "",
+      ].join("\n");
+    }
+
+    function utf16LeCsvBlob(text) {
+      const bytes = new Uint8Array(2 + text.length * 2);
+      bytes[0] = 0xff;
+      bytes[1] = 0xfe;
+      for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i);
+        bytes[2 + i * 2] = code & 0xff;
+        bytes[3 + i * 2] = code >> 8;
+      }
+      return new Blob([bytes], { type: "text/csv;charset=utf-16le" });
+    }
+
+    function timestampForFilename() {
+      const now = new Date();
+      return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        "_",
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0"),
+        String(now.getSeconds()).padStart(2, "0")
+      ].join("");
+    }
+
+    async function saveBlob(blob, suggestedName, pickerType = null) {
+      if ("showSaveFilePicker" in window) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [pickerType || {
+            description: "CSV",
+            accept: { "text/csv": [".csv"] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return handle.name;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = suggestedName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return suggestedName;
+    }
+
+    function metadataSourceName() {
+      return previews.length ? "offset" : "ltc";
+    }
+
+    function chooseMetadataFormat() {
+      return new Promise(resolve => {
+        const previousFocus = document.activeElement;
+        let settled = false;
+
+        function close(result) {
+          if (settled) return;
+          settled = true;
+          els.confirmOverlay.classList.remove("show");
+          els.confirmOverlay.setAttribute("aria-hidden", "true");
+          els.confirmCancelBtn.removeEventListener("click", onCancel);
+          els.confirmAltBtn.removeEventListener("click", onAle);
+          els.confirmWriteBtn.removeEventListener("click", onResolve);
+          document.removeEventListener("keydown", onKeydown);
+          previousFocus?.focus?.();
+          resolve(result);
+        }
+
+        function onCancel() { close(null); }
+        function onAle() { close("ale"); }
+        function onResolve() { close("resolve"); }
+        function onKeydown(event) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            close(null);
+          }
+        }
+
+        els.confirmTitle.textContent = "导出为元数据";
+        els.confirmCopy.innerHTML = [
+          "请选择要导出的元数据格式。",
+          "<strong>Resolve CSV</strong> 适合 DaVinci Resolve 导入；<strong>ALE</strong> 适合 Avid/场记/日样交换流程。"
+        ].join("<br>");
+        els.confirmCancelBtn.textContent = "取消";
+        els.confirmAltBtn.textContent = "ALE";
+        els.confirmWriteBtn.textContent = "Resolve CSV";
+        els.confirmWriteBtn.classList.remove("danger");
+        els.confirmAltBtn.hidden = false;
+        els.confirmOverlay.classList.add("show");
+        els.confirmOverlay.setAttribute("aria-hidden", "false");
+        els.confirmCancelBtn.addEventListener("click", onCancel);
+        els.confirmAltBtn.addEventListener("click", onAle);
+        els.confirmWriteBtn.addEventListener("click", onResolve);
+        document.addEventListener("keydown", onKeydown);
+        requestAnimationFrame(() => els.confirmWriteBtn.focus());
+      });
+    }
+
+    async function exportMetadata() {
+      const items = resolveMetadataItems();
+      if (!items.length) throw new Error("没有可导出的时码元数据；请先生成偏移预览或完成 LTC 检测");
+      const format = await chooseMetadataFormat();
+      if (!format) return;
+      const source = metadataSourceName();
+      const stamp = timestampForFilename();
+      const exportConfig = format === "ale"
+        ? {
+          label: "ALE",
+          name: `audio_tc_${source}_metadata_${stamp}.ale`,
+          blob: new Blob([aleMetadataText()], { type: "text/plain;charset=utf-8" }),
+          pickerType: { description: "Avid Log Exchange", accept: { "text/plain": [".ale"] } },
+        }
+        : {
+          label: "Resolve CSV",
+          name: `resolve_${source}_metadata_${stamp}.csv`,
+          blob: utf16LeCsvBlob(resolveMetadataCsv()),
+          pickerType: { description: "Resolve CSV", accept: { "text/csv": [".csv"] } },
+        };
+      const savedName = await saveBlob(exportConfig.blob, exportConfig.name, exportConfig.pickerType);
+      setState("已导出");
+      els.statusLine.textContent = `已导出 ${exportConfig.label} 元数据：${items.length} 个文件`;
+      els.toast.textContent = `✅ 已导出 ${savedName}`;
+      els.toast.classList.add("show");
+      setTimeout(() => els.toast.classList.remove("show"), 4500);
+      log(`Metadata Export OK: ${items.length} files, format ${exportConfig.label}, source ${source} -> ${savedName}`);
     }
 
     function manifestCsv() {
@@ -3383,6 +3634,7 @@
       els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
       els.extractLtcBtn.disabled = records.length === 0;
       els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(result => result.ok);
+      els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;
     }
 
     async function runPreview() {
@@ -4045,6 +4297,7 @@
         els.confirmTitle.textContent = title;
         els.confirmCopy.innerHTML = copy;
         els.confirmCancelBtn.textContent = cancelText;
+        els.confirmAltBtn.hidden = true;
         els.confirmWriteBtn.textContent = confirmText;
         els.confirmWriteBtn.classList.toggle("danger", danger);
         els.confirmOverlay.classList.add("show");
@@ -4295,6 +4548,7 @@
     els.applyBtn.addEventListener("click", () => guarded(applyChanges));
     els.undoBtn.addEventListener("click", () => guarded(undoLastWrite));
     els.extractLtcBtn.addEventListener("click", () => guarded(extractLtcFromFiles));
+    els.exportMetadataBtn.addEventListener("click", () => guarded(exportMetadata));
     els.writeLtcBtn.addEventListener("click", () => guarded(writeLtcTimecode));
     els.calcBtn.addEventListener("click", () => guarded(calculateTimecodeDifference));
     els.useCalcBtn.addEventListener("click", () => guarded(useCalculatorResult));
@@ -4443,6 +4697,7 @@
       els.undoBtn.disabled = true;
       els.previewBtn.disabled = false;
       els.extractLtcBtn.disabled = false;
+      els.exportMetadataBtn.disabled = true;
       els.writeLtcBtn.disabled = true;
       setState("已载入");
       const takeText = takeGroupKeys.size ? `，识别到 ${takeGroupKeys.size} 个分轨 take` : "";
