@@ -5202,6 +5202,11 @@
         return `${shortGroupLabel(key)}：${tracks.length} 轨`;
       });
       const batchMode = groups.length > 1;
+      const chromeFolderWarning = [
+        "由于 Chrome 的安全限制，",
+        "<strong>请不要直接选择“下载”“文稿”“桌面”等受保护的常用文件夹。</strong>",
+        "请先在里面新建一个子文件夹再选择。"
+      ].join("<br>");
       return showConfirmDialog({
         title: "合并为 Poly WAV？",
         confirmText: batchMode ? "选择输出文件夹" : "选择保存位置",
@@ -5210,7 +5215,7 @@
           trackCounts.slice(0, 6).join("<br>"),
           groups.length > 6 ? `还有 ${groups.length - 6} 个 take…` : "",
           batchMode ? "批量合并会让你选择一个输出文件夹；同名文件会被覆盖。" : "",
-          batchMode ? "由于 Chrome 的安全限制，请不要直接选择“下载”“文稿”“桌面”等受保护的常用文件夹；请先在里面新建一个子文件夹再选择。" : "",
+          batchMode ? chromeFolderWarning : "",
           "原始文件不会被修改。"
         ].filter(Boolean).join("<br>"),
       });
