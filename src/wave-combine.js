@@ -5,7 +5,7 @@ import {
   recordKey,
   recordLabel,
   shortGroupLabel,
-  zoomTrackNumber,
+  zoomTrackNumbers,
 } from "./grouping.js";
 import {
   chunkHeader,
@@ -26,15 +26,17 @@ export function xmlEscape(value) {
 
 export function trackNameForSource(record, channelIndex) {
   if (isZoomLrFile(record)) return channelIndex === 0 ? "TrL" : "TrR";
-  const track = zoomTrackNumber(record);
-  if (track !== null) return `Tr${track}`;
+  const tracks = zoomTrackNumbers(record);
+  const track = tracks[channelIndex] ?? tracks[0];
+  if (track !== undefined) return `Tr${track}`;
   return record.channels === 1 ? record.name.replace(/\.[^.]+$/, "") : `A${channelIndex + 1}`;
 }
 
 export function sourceChannelIndex(record, channelIndex) {
   if (isZoomLrFile(record)) return channelIndex + 1;
-  const track = zoomTrackNumber(record);
-  if (track !== null) return track + 2;
+  const tracks = zoomTrackNumbers(record);
+  const track = tracks[channelIndex] ?? tracks[0];
+  if (track !== undefined) return track + 2;
   return channelIndex + 1;
 }
 

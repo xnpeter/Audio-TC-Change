@@ -84,10 +84,20 @@ export function zoomTrackNumber(record) {
   return match ? Number(match[1]) : null;
 }
 
+export function zoomTrackNumbers(record) {
+  const match = record.name.match(/(?:^|[_-])Tr(\d+)\.wav$/i);
+  if (!match) return [];
+  const digits = match[1];
+  if (record.channels > 1 && digits.length === record.channels) {
+    return Array.from(digits, digit => Number(digit));
+  }
+  return [Number(digits)];
+}
+
 export function combineSortValue(record) {
   if (isZoomLrFile(record)) return 0;
-  const track = zoomTrackNumber(record);
-  if (track !== null) return 10 + track;
+  const tracks = zoomTrackNumbers(record);
+  if (tracks.length) return 10 + tracks[0];
   return 1000;
 }
 
