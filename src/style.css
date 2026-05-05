@@ -1132,6 +1132,12 @@ tbody tr:hover { background: #f8fbfb; }
   background: #ecfdf3;
 }
 
+.ltc-value-warn {
+  color: var(--warn);
+  font-weight: 850;
+  background: #fff3e5;
+}
+
 .empty {
   height: 210px;
   display: flex;

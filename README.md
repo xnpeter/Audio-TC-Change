@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v0.2.0-202a36">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v0.4.1-202a36">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  Audio TC Change is a free, open-source, browser-based tool for fixing WAV/BWF production audio timecode. It runs locally in Chrome or Edge, so audio files stay on your machine.
+  Audio TC Change is a free, open-source, browser-based tool for viewing and editing WAV/BWF timecode, extracting LTC, and exporting video file (MOV/MP4) timecode as metadata. It runs locally in Chrome or Edge, so your files stay on your machine.
 </p>
 
 ## 中文
@@ -31,10 +31,11 @@
 - 手头只有 ZOOM H6 这类没有时码接口的录音机，但又不想手动合板。
 - 现场把 LTC 录进了某一路音轨，希望后期从这一路音频里读出时间码，再写回 WAV/BWF metadata。
 
-Audio TC Change 为这些问题提供一个本地的一站式方案。它主要做两件事：
+Audio TC Change 为这些问题提供一个本地的一站式方案。它主要做三件事：
 
 1. 批量修改 WAV/BWF 音频文件的起始时码。
-2. 从音频轨道里提取 LTC，并倒推出文件起始时码。
+2. 从音频或视频音轨里提取 LTC，并倒推出文件起始时码。
+3. 读取 MOV/MP4 视频文件的内嵌时码，导出为 Resolve CSV / Avid ALE 元数据。
 
 ### 为什么做这个工具
 
@@ -65,9 +66,10 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 
 - 内置时间码计算器，方便计算两个时间码之间的差值。
 - 批量查看 WAV/BWF 文件的起始 TC、结束 TC、采样率、帧率和 TimeReference。
+- 支持 MOV/MP4 视频文件，读取内嵌时码（tmcd/rtmd）并导出元数据。
 - 批量偏移音频文件时间码，支持正负偏移。
 - 可直接写回 WAV/BWF 文件，也可导出 Resolve CSV 或 Avid ALE 元数据。
-- 从音频轨道提取 LTC，适合处理只有部分长度存在 LTC 信号的素材。
+- 从音频或视频音轨提取 LTC，适合处理只有部分长度存在 LTC 信号的素材。
 - 自动识别 LTC 帧率，支持 23.976 到 120fps 的常见 DF 与 NDF 时码。
 - 支持混合帧率素材的时间码偏移。
 - 读取 iXML 中的帧率信息，并在文件 metadata 与界面帧率不一致时提示确认。
@@ -89,7 +91,7 @@ Audio TC Change 会：
 - 如果文件原本存在 iXML 时间戳，也同步更新 iXML 里的 `TIMESTAMP_SAMPLES_SINCE_MIDNIGHT`。
 - 写入后验证 bext 和 iXML 是否一致。
 
-工具修改的是文件头 metadata，不重编码音频，不改变声音内容，也不改变文件时长。
+工具修改的是 WAV 文件头 metadata，不重编码音频，不改变声音内容，也不改变文件时长。视频文件仅读取时码信息，不直接修改视频文件本身，通过导出元数据（CSV/ALE）的方式传递时码到剪辑软件。
 
 #### LTC 提取
 
@@ -156,7 +158,6 @@ Chrome 或 Edge 推荐使用，因为写回本地文件依赖 File System Access
 
 ### 后续计划
 
-- 支持 MOV、MP4 等视频文件的时码修改与 LTC 提取。
 - 继续优化低质量 LTC 的提取能力。
 - 支持 poly 拆分成 mono。
 
@@ -173,10 +174,11 @@ Production audio timecode can go wrong in a few familiar ways:
 - You only have a recorder such as the ZOOM H6, with no dedicated timecode input, but you do not want to sync everything manually.
 - LTC was recorded onto one audio channel, and you want to read that signal and write the result back into WAV/BWF metadata.
 
-Audio TC Change provides a local, browser-based workflow for these cases. It mainly does two things:
+Audio TC Change provides a local, browser-based workflow for these cases. It mainly does three things:
 
 1. Batch-edit WAV/BWF audio start timecode.
-2. Extract LTC from an audio channel and calculate the file start timecode.
+2. Extract LTC from an audio or video track and calculate the file start timecode.
+3. Read embedded timecode from MOV/MP4 video files and export as Resolve CSV / Avid ALE metadata.
 
 ### Why This Exists
 
@@ -207,9 +209,10 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 
 - Built-in timecode calculator for offset calculation.
 - Batch inspection of WAV/BWF start TC, end TC, sample rate, frame rate, and TimeReference.
+- Support MOV/MP4 video files — read embedded timecode (tmcd/rtmd) and export as metadata.
 - Batch positive or negative timecode offsets.
 - Write timecode back into WAV/BWF files, or export Resolve CSV / Avid ALE metadata.
-- Extract LTC from audio channels, including files where LTC exists only in part of the recording.
+- Extract LTC from audio or video tracks, including files where LTC exists only in part of the recording.
 - Auto-detect LTC frame rate, supporting common DF and NDF rates from 23.976 to 120fps.
 - Handle mixed-frame-rate material during offset operations.
 - Read iXML frame-rate metadata and warn when it differs from the UI setting.
@@ -231,7 +234,7 @@ Audio TC Change:
 - If iXML timestamp fields already exist, updates `TIMESTAMP_SAMPLES_SINCE_MIDNIGHT` as well.
 - Verifies that bext and iXML agree after writing.
 
-The tool changes file header metadata only. It does not re-encode audio, change the sound content, or change file duration.
+The tool changes WAV file header metadata only. It does not re-encode audio, change the sound content, or change file duration. Video files are read-only — timecode is exported as metadata (CSV/ALE) for use in editing software.
 
 #### LTC Extraction
 
@@ -296,7 +299,6 @@ Write-back mode directly modifies WAV/BWF metadata. For production material, bac
 
 ### Roadmap
 
-- MOV/MP4 timecode editing and LTC extraction.
 - Better extraction from low-quality LTC recordings.
 - Poly-to-mono split workflows.
 

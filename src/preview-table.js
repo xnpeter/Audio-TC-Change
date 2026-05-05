@@ -45,6 +45,11 @@ export function createPreviewTableRenderer({
     return "fps-badge";
   }
 
+  function ltcValueClass(ltc) {
+    if (!(ltc?.ok || ltc?.status === "ok")) return "";
+    return ltc.qualityRank === 1 ? "ltc-value-warn" : "ltc-value-ok";
+  }
+
   function renderRows() {
     const records = getRecords();
     const previews = getPreviews();
@@ -134,7 +139,10 @@ export function createPreviewTableRenderer({
           if (!preview && recordWasChanged && [5, 7].includes(index)) td.classList.add("ltc-value-ok");
           if ([11, 12].includes(index)) td.classList.add("ltc-col");
           if (index === 11 && (!ltc || !ltc.timecode)) td.classList.add("pending");
-          if (index === 11 && (ltc?.ok || ltc?.status === "ok")) td.classList.add("ltc-value-ok");
+          if ([11, 12].includes(index)) {
+            const qualityClass = ltcValueClass(ltc);
+            if (qualityClass) td.classList.add(qualityClass);
+          }
           row.appendChild(td);
         });
         const result = document.createElement("td");
