@@ -1,0 +1,108 @@
+export function recordKey(record) {
+  return record.relativePath || record.name;
+}
+
+export function recordLabel(record) {
+  return record.relativePath || record.name;
+}
+
+export function groupKeyFor(record, takeGroupKeys) {
+  if (!record.parentPath) return recordKey(record);
+  return takeGroupKeys.has(record.parentPath) ? record.parentPath : recordKey(record);
+}
+
+export function groupLabelFor(record, takeGroupKeys) {
+  return takeGroupKeys.has(record.parentPath) ? record.parentPath : recordLabel(record);
+}
+
+export function shortGroupLabel(key) {
+  const parts = key.split("/").filter(Boolean);
+  return parts[parts.length - 1] || key || "根目录";
+}
+
+export function hasZoomHNamePattern(record) {
+  if (!record.parentPath) return false;
+  const parent = shortGroupLabel(record.parentPath);
+  return new RegExp(`^${parent}_Tr\\d+\\.wav$`, "i").test(record.name) || /(?:^|[_-])Tr\d+\.wav$/i.test(record.name);
+}
+
+export function ltcScanPriority(record) {
+  const name = record.name || "";
+  if (record.channels === 1 && hasZoomHNamePattern(record)) return 0;
+  if (record.channels === 1) return 1;
+  if (/_LR\.wav$/i.test(name)) return 3;
+  return 2;
+}
+
+export function ltcScanRecords(groupRecords) {
+  return [...groupRecords].sort((a, b) => {
+    const priority = ltcScanPriority(a) - ltcScanPriority(b);
+    if (priority) return priority;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+}
+
+export function detectTakeGroupKeys(recordList) {
+  const folders = new Map();
+  for (const record of recordList) {
+    if (!record.parentPath) continue;
+    if (!folders.has(record.parentPath)) folders.set(record.parentPath, []);
+    folders.get(record.parentPath).push(record);
+  }
+
+  const keys = new Set();
+  for (const [folder, group] of folders) {
+    if (group.length < 2) continue;
+
+    const sampleRates = new Set(group.map(record => record.sampleRate));
+    const bits = new Set(group.map(record => record.bitsPerSample));
+    const formats = new Set(group.map(record => record.audioFormat));
+    if (sampleRates.size !== 1 || bits.size !== 1 || formats.size !== 1) continue;
+
+    const durations = group.map(record => Number(record.durationSamples));
+    const minDuration = Math.min(...durations);
+    const maxDuration = Math.max(...durations);
+    const durationTolerance = Math.max(group[0].sampleRate * 2, maxDuration * 0.01);
+    const sameTakeDuration = maxDuration - minDuration <= durationTolerance;
+    const hasTrackNames = group.some(hasZoomHNamePattern);
+
+    if (sameTakeDuration || hasTrackNames) keys.add(folder);
+  }
+  return keys;
+}
+
+export function isTakeTrackFor(record, takeGroupKeys) {
+  return Boolean(record.parentPath && takeGroupKeys.has(record.parentPath));
+}
+
+export function isZoomLrFile(record) {
+  return /_LR\.wav$/i.test(record.name);
+}
+
+export function zoomTrackNumber(record) {
+  const match = record.name.match(/(?:^|[_-])Tr(\d+)\.wav$/i);
+  return match ? Number(match[1]) : null;
+}
+
+export function combineSortValue(record) {
+  if (isZoomLrFile(record)) return 0;
+  const track = zoomTrackNumber(record);
+  if (track !== null) return 10 + track;
+  return 1000;
+}
+
+export function recordsByGroupFor(recordList, takeGroupKeys) {
+  const groups = new Map();
+  for (const record of recordList) {
+    const key = groupKeyFor(record, takeGroupKeys);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  return groups;
+}
+
+export function combineEligibleGroupsFor(recordList, takeGroupKeys) {
+  return Array.from(recordsByGroupFor(recordList, takeGroupKeys).entries())
+    .filter(([, groupRecords]) => groupRecords.length > 1 && groupRecords.every(record => isTakeTrackFor(record, takeGroupKeys)))
+    .filter(([, groupRecords]) => groupRecords.some(record => record.channels > 1) || groupRecords.some(record => record.channels === 1));
+}
