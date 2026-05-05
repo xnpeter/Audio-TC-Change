@@ -11,10 +11,14 @@ export function createFpsMetadataController({ fpsInput }) {
     return option ? `${option.textContent} FPS` : fpsLabel(parseFps(value));
   }
 
+  function metaFpsValue(record) {
+    return record._meta?.fpsValue || "";
+  }
+
   function detectedMetadataFps(recordsToCheck) {
     const counts = new Map();
     for (const record of recordsToCheck) {
-      const value = ixmlRateToFpsValue(record.ixmlInfo);
+      const value = ixmlRateToFpsValue(record.ixmlInfo) || metaFpsValue(record);
       if (!value) continue;
       counts.set(value, (counts.get(value) || 0) + 1);
     }
@@ -29,7 +33,7 @@ export function createFpsMetadataController({ fpsInput }) {
   }
 
   function recordFpsValue(record) {
-    return ixmlRateToFpsValue(record.ixmlInfo) || fpsInput.value;
+    return ixmlRateToFpsValue(record.ixmlInfo) || metaFpsValue(record) || fpsInput.value;
   }
 
   function recordFps(record) {
@@ -37,7 +41,9 @@ export function createFpsMetadataController({ fpsInput }) {
   }
 
   function recordFpsSource(record) {
-    return ixmlRateToFpsValue(record.ixmlInfo) ? "iXML" : "界面设置";
+    if (ixmlRateToFpsValue(record.ixmlInfo)) return "iXML";
+    if (metaFpsValue(record)) return "ALE/CSV";
+    return "界面设置";
   }
 
   function recordFpsDisplay(record) {

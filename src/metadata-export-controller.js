@@ -1,5 +1,7 @@
 import {
   aleMetadataText,
+  resolveFullAleText,
+  resolveFullMetadataCsv,
   resolveMetadataCsv,
   utf16LeCsvBlob,
 } from "./metadata-export.js";
@@ -91,6 +93,10 @@ export function createMetadataExportController({
     return getPreviews().length ? "offset" : "ltc";
   }
 
+  function hasMetaItems(items) {
+    return items.some(item => item.record._meta);
+  }
+
   async function exportMetadata() {
     const items = resolveMetadataItems();
     if (!items.length) throw new Error("没有可导出的时码元数据；请先生成偏移预览或完成 LTC 检测");
@@ -98,17 +104,18 @@ export function createMetadataExportController({
     if (!format) return;
     const source = metadataSourceName();
     const stamp = timestampForFilename();
+    const useFullFormat = hasMetaItems(items);
     const exportConfig = format === "ale"
       ? {
         label: "ALE",
-        name: `audio_tc_${source}_metadata_${stamp}.ale`,
-        blob: new Blob([aleMetadataText(items, els.fpsInput.value, { samplesToTimecode, recordLabel })], { type: "text/plain;charset=utf-8" }),
+        name: `${useFullFormat ? "resolve" : "audio_tc"}_${source}_metadata_${stamp}.ale`,
+        blob: new Blob([(useFullFormat ? resolveFullAleText : aleMetadataText)(items, els.fpsInput.value, { samplesToTimecode, recordLabel })], { type: "text/plain;charset=utf-8" }),
         pickerType: { description: "Avid Log Exchange", accept: { "text/plain": [".ale"] } },
       }
       : {
         label: "Resolve CSV",
         name: `resolve_${source}_metadata_${stamp}.csv`,
-        blob: utf16LeCsvBlob(resolveMetadataCsv(items, { samplesToTimecode })),
+        blob: utf16LeCsvBlob((useFullFormat ? resolveFullMetadataCsv : resolveMetadataCsv)(items, { samplesToTimecode })),
         pickerType: { description: "Resolve CSV", accept: { "text/csv": [".csv"] } },
       };
     const savedName = await saveBlob(exportConfig.blob, exportConfig.name, exportConfig.pickerType);

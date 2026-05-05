@@ -1,7 +1,28 @@
+async function readFileAsText(handle) {
+  const file = await handle.getFile();
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if (buf[0] === 0xff && buf[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(buf.slice(2));
+  }
+  if (buf[0] === 0xfe && buf[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(buf.slice(2));
+  }
+  return new TextDecoder("utf-8").decode(buf);
+}
+
+async function importMetadataHandle(handle, parseMetadataImport, pushRecord, log) {
+  const text = await readFileAsText(handle);
+  const records = parseMetadataImport(text, handle.name);
+  for (const record of records) pushRecord(record);
+  log(`Metadata import: ${records.length} clips from ${handle.name}`);
+}
+
 export function createFileImportController({
   els,
   scanWave,
   wavSuffix,
+  metadataSuffix,
+  parseMetadataImport,
   setDirectoryHandle,
   getRecords,
   pushRecord,
@@ -32,12 +53,18 @@ export function createFileImportController({
       const relativePath = `${basePath}/${entry.name}`;
       if (entry.kind === "directory") {
         await addDirectory(entry, relativePath);
-      } else if (entry.kind === "file" && wavSuffix.test(entry.name)) {
-        pushRecord(await scanWave(entry, {
-          relativePath,
-          parentPath: basePath,
-          parentHandle: handle,
-        }));
+      } else if (entry.kind === "file") {
+        if (wavSuffix.test(entry.name)) {
+          pushRecord(await scanWave(entry, {
+            relativePath,
+            parentPath: basePath,
+            parentHandle: handle,
+          }));
+        } else if (metadataSuffix && metadataSuffix.test(entry.name)) {
+          const text = await readFileAsText(entry);
+          const metaRecords = parseMetadataImport(text, entry.name);
+          for (const record of metaRecords) pushRecord(record);
+        }
       }
     }
   }
@@ -46,39 +73,53 @@ export function createFileImportController({
     if (handle.kind === "directory") {
       setDirectoryHandle(handle);
       await addDirectory(handle);
-    } else if (handle.kind === "file" && wavSuffix.test(handle.name)) {
-      pushRecord(await scanWave(handle));
+    } else if (handle.kind === "file") {
+      if (wavSuffix.test(handle.name)) {
+        pushRecord(await scanWave(handle));
+      } else if (metadataSuffix && metadataSuffix.test(handle.name)) {
+        await importMetadataHandle(handle, parseMetadataImport, pushRecord, log);
+      }
     }
   }
 
   async function finishImport(count, sourceLabel) {
     const records = getRecords();
     if (records.length <= count) return;
+    const newRecords = records.slice(count);
+    const metaRecords = newRecords.filter(r => r._meta);
+    const wavRecords = newRecords.filter(r => !r._meta);
     clearAfterImportState(count);
     refreshTakeGroups();
     els.undoBtn.disabled = true;
     els.previewBtn.disabled = false;
-    els.extractLtcBtn.disabled = false;
+    els.extractLtcBtn.disabled = wavRecords.length === 0;
     els.exportMetadataBtn.disabled = true;
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
     els.writeLtcBtn.disabled = true;
     setState("已载入");
-    const takeText = takeGroupCount() ? `，识别到 ${takeGroupCount()} 个分轨 take` : "";
-    els.statusLine.textContent = `已载入 ${records.length} 个 WAV${takeText}；输入偏移后点击预览`;
+    const parts = [];
+    if (metaRecords.length) parts.push(`${metaRecords.length} 个视频元数据`);
+    if (wavRecords.length) {
+      const takeText = takeGroupCount() ? `，识别到 ${takeGroupCount()} 个分轨 take` : "";
+      parts.push(`${wavRecords.length} 个 WAV${takeText}`);
+    }
+    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；输入偏移后点击预览`;
     renderRows();
-    log(`${sourceLabel}: ${records.length - count} WAV file(s)`);
+    log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${metaRecords.length} metadata)`);
 
-    const metadata = detectedMetadataFps(records.slice(count));
-    if (metadata && fpsDiffersFromUi(metadata.value)) {
-      const useMetadata = await confirmMetadataFpsMismatch({
-        currentValue: fpsInput.value,
-        metadata,
-      });
-      if (useMetadata) {
-        setFpsValue(metadata.value);
-        log(`FPS: switched to ${fpsSelectLabel(metadata.value)} from iXML metadata`);
-      } else {
-        log(`FPS: kept ${fpsSelectLabel(fpsInput.value)} despite iXML metadata ${fpsSelectLabel(metadata.value)}`);
+    if (newRecords.length) {
+      const fpsMeta = detectedMetadataFps(newRecords);
+      if (fpsMeta && fpsDiffersFromUi(fpsMeta.value)) {
+        const useMetadata = await confirmMetadataFpsMismatch({
+          currentValue: fpsInput.value,
+          metadata: fpsMeta,
+        });
+        if (useMetadata) {
+          setFpsValue(fpsMeta.value);
+          log(`FPS: switched to ${fpsSelectLabel(fpsMeta.value)} from file metadata`);
+        } else {
+          log(`FPS: kept ${fpsSelectLabel(fpsInput.value)} despite file metadata ${fpsSelectLabel(fpsMeta.value)}`);
+        }
       }
     }
   }
@@ -117,6 +158,19 @@ export function createFileImportController({
         relativePath: basePath,
         parentPath: basePath.split("/").slice(0, -1).join("/"),
       }));
+    } else if (entry.isFile && metadataSuffix && metadataSuffix.test(entry.name)) {
+      const file = await entryFile(entry);
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let text;
+      if (buf[0] === 0xff && buf[1] === 0xfe) {
+        text = new TextDecoder("utf-16le").decode(buf.slice(2));
+      } else if (buf[0] === 0xfe && buf[1] === 0xff) {
+        text = new TextDecoder("utf-16be").decode(buf.slice(2));
+      } else {
+        text = new TextDecoder("utf-8").decode(buf);
+      }
+      const metaRecords = parseMetadataImport(text, entry.name);
+      for (const record of metaRecords) pushRecord(record);
     }
   }
 

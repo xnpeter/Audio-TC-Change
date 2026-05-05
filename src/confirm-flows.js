@@ -59,13 +59,13 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
 
   function confirmMetadataFpsMismatch({ currentValue, metadata }) {
     return showConfirmDialog({
-      title: "音频文件记录的帧率不同",
+      title: "文件记录的帧率不同",
       cancelText: `保持 ${fpsSelectLabel(currentValue)}`,
       confirmText: `改用 ${fpsSelectLabel(metadata.value)}`,
       copy: [
         `当前界面设置是 <strong>${fpsSelectLabel(currentValue)}</strong>。`,
-        `导入文件的 iXML 元数据里有 <strong>${metadata.count}/${metadata.total}</strong> 个文件记录为 <strong>${fpsSelectLabel(metadata.value)}</strong>。`,
-        "预览会优先按每个文件的 iXML 帧率计算；界面设置只用于没有 iXML 帧率的文件和输入格式。"
+        `导入文件的元数据里有 <strong>${metadata.count}/${metadata.total}</strong> 个文件记录为 <strong>${fpsSelectLabel(metadata.value)}</strong>。`,
+        "预览会优先按每个文件的元数据帧率计算；界面设置只用于没有元数据帧率的文件和输入格式。"
       ].join("<br>"),
     });
   }

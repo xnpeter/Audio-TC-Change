@@ -73,21 +73,22 @@ export function createPreviewTableRenderer({
         sampleRates.add(record.sampleRate);
         if (preview) sampleOffsets.add(preview.sampleOffset.toString());
         const row = document.createElement("tr");
+        if (record._meta) row.classList.add("meta-record");
         const cells = [
           recordLabel(record),
-          record.sampleRate,
-          record.channels,
-          record.bitsPerSample,
+          record.sampleRate || "-",
+          record.channels || "-",
+          record.bitsPerSample || "-",
           preview?.fpsDisplay || recordFpsDisplay(record),
-          samplesToTimecode(record.oldTimeReference, record.sampleRate, fps),
-          preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate, fps) : "待预览",
-          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps),
-          preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, record.sampleRate, fps) : "待预览",
+          samplesToTimecode(record.oldTimeReference, record.sampleRate || 48000, fps),
+          preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate || 48000, fps) : "待预览",
+          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate || 48000, fps),
+          preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, record.sampleRate || 48000, fps) : "待预览",
           record.oldTimeReference,
           preview ? preview.newTimeReference : "待预览",
           ltc ? ltcStartTimecode(ltc, record) : "待检测",
           ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测",
-          formatDuration(record.durationSamples, record.sampleRate),
+          formatDuration(record.durationSamples, record.sampleRate || 48000),
         ];
         cells.forEach((cell, index) => {
           const td = document.createElement("td");
@@ -98,7 +99,7 @@ export function createPreviewTableRenderer({
             td.appendChild(name);
           } else if (index === 4) {
             const badge = document.createElement("span");
-            badge.className = `fps-badge${fpsSource === "iXML" ? " ixml" : ""}`;
+            badge.className = `fps-badge${fpsSource === "iXML" || fpsSource === "ALE/CSV" ? " ixml" : ""}`;
             badge.textContent = String(cell);
             td.appendChild(badge);
           } else {
