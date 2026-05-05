@@ -94,7 +94,7 @@ export function createMetadataExportController({
   }
 
   function hasMetaItems(items) {
-    return items.some(item => item.record._meta);
+    return items.some(item => item.record._meta || item.record._video);
   }
 
   async function exportMetadata() {

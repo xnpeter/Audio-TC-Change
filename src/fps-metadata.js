@@ -12,6 +12,10 @@ export function createFpsMetadataController({ fpsInput }) {
   }
 
   function metaFpsValue(record) {
+    return record._meta?.fpsValue || record._video?.fpsValue || "";
+  }
+
+  function importedMetadataFpsValue(record) {
     return record._meta?.fpsValue || "";
   }
 
@@ -42,7 +46,8 @@ export function createFpsMetadataController({ fpsInput }) {
 
   function recordFpsSource(record) {
     if (ixmlRateToFpsValue(record.ixmlInfo)) return "iXML";
-    if (metaFpsValue(record)) return "ALE/CSV";
+    if (importedMetadataFpsValue(record)) return "ALE/CSV";
+    if (record._video?.fpsValue) return "视频元数据";
     return "界面设置";
   }
 

@@ -108,7 +108,7 @@ export function createTimeReferenceWriteController({
     setActiveOffset(firstOffset);
     renderRows();
     els.applyBtn.disabled = false;
-    const allMeta = nextPreviews.every(p => p._meta);
+    const allMeta = nextPreviews.every(p => p._meta || p._video);
     if (allMeta) {
       els.applyBtn.disabled = true;
       setState("可导出");
@@ -156,7 +156,7 @@ export function createTimeReferenceWriteController({
     const ltcResults = getLtcResults();
     const writableItems = records
       .map(record => ({ record, ltc: ltcResults.get(recordKey(record)) }))
-      .filter(item => item.ltc?.ok);
+      .filter(item => item.ltc?.ok && !item.record._meta && !item.record._video && item.record.fileHandle?.createWritable);
     if (!writableItems.length) throw new Error("没有可写入的 LTC 识别结果");
 
     const ok = await confirmWriteChanges(writableItems.length, true);
@@ -236,7 +236,10 @@ export function createTimeReferenceWriteController({
       els.progressOverlay.classList.remove("show");
       updateWriteProgress("正在写入…", "", 0, writableItems.length || 1);
       els.extractLtcBtn.disabled = getRecords().length === 0;
-      els.writeLtcBtn.disabled = !Array.from(getLtcResults().values()).some(result => result.ok);
+      els.writeLtcBtn.disabled = !Array.from(getLtcResults().values()).some(result => {
+        const record = result?.record;
+        return result?.ok && record && !record._meta && !record._video && record.fileHandle?.createWritable;
+      });
       els.undoBtn.disabled = !getLastUndoBatch();
     }
   }
@@ -244,8 +247,8 @@ export function createTimeReferenceWriteController({
   async function applyChanges() {
     const previews = getPreviews();
     if (!previews.length) throw new Error("没有可写入的预览");
-    const wavPreviews = previews.filter(p => !p._meta);
-    const metaPreviews = previews.filter(p => p._meta);
+    const wavPreviews = previews.filter(p => !p._meta && !p._video);
+    const metaPreviews = previews.filter(p => p._meta || p._video);
 
     if (!wavPreviews.length && !metaPreviews.length) throw new Error("没有可应用的预览");
 

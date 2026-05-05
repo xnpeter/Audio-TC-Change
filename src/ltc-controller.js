@@ -225,7 +225,7 @@ export function createLtcController({
 
   async function extractLtcFromFiles() {
     const records = getRecords();
-    if (!records.length) throw new Error("请先拖入 WAV 文件");
+    if (!records.length) throw new Error("请先拖入 WAV 或视频文件");
     let fpsValue = els.fpsInput.value;
     let allowFpsPrompt = true;
 
@@ -236,7 +236,7 @@ export function createLtcController({
       setLtcResults(new Map());
       els.writeLtcBtn.disabled = true;
       setState("LTC检测中", "warn");
-      els.statusLine.textContent = "正在按 take 文件夹从音频波形读取 LTC...";
+      els.statusLine.textContent = "正在按文件/take 从音频波形读取 LTC...";
       updateWriteProgress("正在检测 LTC…", "", 0, groups.length);
       els.progressOverlay.classList.add("show");
 
@@ -317,11 +317,15 @@ export function createLtcController({
         const ltcResults = getLtcResults();
         const okGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok).map(result => result.groupKey));
         const okFiles = Array.from(ltcResults.values()).filter(result => result.ok).length;
+        const writableOkFiles = Array.from(ltcResults.values()).filter(result => {
+          const record = result.record;
+          return result.ok && record && !record._meta && !record._video && record.fileHandle?.createWritable;
+        }).length;
         const lowQualityGroups = new Set(Array.from(ltcResults.values()).filter(result => result.ok && result.qualityRank === 1).map(result => result.groupKey));
-        setState(okGroups.size ? "LTC可写入" : "未检测到LTC", okGroups.size ? "ok" : "warn");
+        setState(okGroups.size ? (writableOkFiles ? "LTC可写入" : "LTC可导出") : "未检测到LTC", okGroups.size ? "ok" : "warn");
         els.statusLine.textContent = okGroups.size
-          ? `已检测到 ${okGroups.size} 个 take 的 LTC；将写入 ${okFiles} 个 WAV${lowQualityGroups.size ? `；${lowQualityGroups.size} 个低质量请人工确认` : ""}`
-          : "没有检测到可写入的 LTC";
+          ? `已检测到 ${okGroups.size} 个文件/take 的 LTC；${writableOkFiles ? `可写入 ${writableOkFiles} 个 WAV，` : ""}可导出 ${okFiles} 条元数据${lowQualityGroups.size ? `；${lowQualityGroups.size} 个低质量请人工确认` : ""}`
+          : "没有检测到可用的 LTC";
         renderRows();
         break;
       } finally {

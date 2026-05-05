@@ -17,7 +17,7 @@
     <header>
       <div class="title-block">
         <h1 class="app-title">Audio TC Change <span id="appVersionBadge" class="app-version"></span></h1>
-        <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码 + 达芬奇 ALE/CSV 元数据</div>
+        <div class="subtitle">批量查看并修改 WAV/MP4/MOV 时间码</div>
       </div>
       <div class="header-meta">
         <span class="badge">RIFF/WAV bext TimeReference</span>
@@ -31,6 +31,34 @@
         <h2 class="calc-title">时间码计算器</h2>
       </div>
       <div class="calc-expression">
+        <label class="calc-fps-field">
+          帧率
+          <div class="select-field" data-select>
+            <select id="fpsInput" aria-label="frame rate">
+              <option value="23.976">23.976</option>
+              <option value="24" selected>24.00</option>
+              <option value="25">25.00</option>
+              <option value="29.97">29.97</option>
+              <option value="29.97df">29.97 DF</option>
+              <option value="30">30.00</option>
+              <option value="48">48.00</option>
+              <option value="50">50.00</option>
+              <option value="59.94">59.94</option>
+              <option value="59.94df">59.94 DF</option>
+              <option value="60">60.00</option>
+              <option value="96">96.00</option>
+              <option value="100">100.00</option>
+              <option value="119.88">119.88</option>
+              <option value="119.88df">119.88 DF</option>
+              <option value="120">120.00</option>
+            </select>
+            <button id="fpsSelectButton" class="select-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fpsSelectMenu">
+              <span>24.00</span>
+            </button>
+            <div id="fpsSelectMenu" class="select-menu" role="listbox" aria-label="frame rate" hidden></div>
+          </div>
+        </label>
+
         <label class="calc-a-field">
           时间码 A
           <div class="timecode-control">
@@ -76,12 +104,20 @@
           <div id="calcResult" class="calc-result">00:00:00:00</div>
         </label>
         <div class="calc-actions">
-          <button id="useCalcBtn" class="primary" type="button" disabled>使用计算结果</button>
+          <button id="useCalcBtn" class="primary" type="button" disabled>填入偏移时码</button>
+        </div>
+        <div class="calc-notes" aria-label="quick notes">
+          <div>1.视频文件仅支持导出 Resolve CSV / ALE 元数据，不直接修改视频文件。</div>
+          <div>2.支持将ZOOM H系列的 Stereo + Mono 分轨批量合并为 Poly WAV。</div>
         </div>
       </div>
     </section>
 
     <section class="toolbar" aria-label="controls">
+      <div class="toolbar-head">
+        <h2 class="toolbar-title">偏移时码与元数据</h2>
+      </div>
+
       <label>
         偏移时间码
         <div class="timecode-control">
@@ -91,34 +127,6 @@
             <button id="tcUpBtn" class="tc-step" type="button" title="增加一帧">▲</button>
             <button id="tcDownBtn" class="tc-step" type="button" title="减少一帧">▼</button>
           </div>
-        </div>
-      </label>
-
-      <label>
-        帧率
-        <div class="select-field" data-select>
-          <select id="fpsInput" aria-label="frame rate">
-            <option value="23.976">23.976</option>
-            <option value="24" selected>24.00</option>
-            <option value="25">25.00</option>
-            <option value="29.97">29.97</option>
-            <option value="29.97df">29.97 DF</option>
-            <option value="30">30.00</option>
-            <option value="48">48.00</option>
-            <option value="50">50.00</option>
-            <option value="59.94">59.94</option>
-            <option value="59.94df">59.94 DF</option>
-            <option value="60">60.00</option>
-            <option value="96">96.00</option>
-            <option value="100">100.00</option>
-            <option value="119.88">119.88</option>
-            <option value="119.88df">119.88 DF</option>
-            <option value="120">120.00</option>
-          </select>
-          <button id="fpsSelectButton" class="select-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fpsSelectMenu">
-            <span>24.00</span>
-          </button>
-          <div id="fpsSelectMenu" class="select-menu" role="listbox" aria-label="frame rate" hidden></div>
         </div>
       </label>
 
@@ -136,10 +144,10 @@
       </div>
 
       <div class="ltc-tools" aria-label="extract timecode from audio waveform">
-        <div class="ltc-tools-title">从波形提取时码（特别适配ZOOM H6等多轨Mono文件）</div>
+        <div class="ltc-tools-title">从音频/视频音轨提取时码（特别适配 ZOOM H6 和机内视频 LTC）</div>
         <div class="ltc-actions">
-          <button id="extractLtcBtn" type="button" title="从音频波形提取 LTC 时码，特别适配 ZOOM H6 等多轨 Mono 文件" disabled>从音频波形提取时码</button>
-          <button id="writeLtcBtn" class="danger" type="button" title="将检测到的 LTC 写入文件时码" disabled>将LTC写入文件时码</button>
+          <button id="extractLtcBtn" type="button" title="从 WAV 或视频音轨提取 LTC 时码" disabled>从音轨提取时码</button>
+          <button id="writeLtcBtn" class="danger" type="button" title="仅对 WAV/BWF 写入；视频文件只导出元数据" disabled>将LTC写入文件时码</button>
         </div>
       </div>
     </section>
@@ -155,8 +163,8 @@
 
       <section class="workspace">
         <div class="table-head">
-          <div class="table-title">音频文件 <span id="phasePill" class="phase">原始信息</span></div>
-          <div id="statusLine" class="status">拖入 WAV / ALE / CSV 文件后显示原始信息</div>
+          <div class="table-title">文件信息 <span id="phasePill" class="phase">原始信息</span></div>
+          <div id="statusLine" class="status">拖入 WAV / MOV / MP4 / ALE / CSV 文件后显示原始信息</div>
         </div>
         <div class="table-wrap">
           <table id="previewTable" hidden>
@@ -181,7 +189,7 @@
             </thead>
             <tbody id="previewBody"></tbody>
           </table>
-          <div id="emptyState" class="empty" role="button" tabindex="0">点击选择或拖入 WAV / ALE / CSV 文件</div>
+          <div id="emptyState" class="empty" role="button" tabindex="0">点击选择或拖入 WAV / MOV / MP4 / ALE / CSV 文件</div>
         </div>
         <div id="log" class="log">Ready.</div>
       </section>
@@ -247,6 +255,7 @@
       samplesToTimecode as formatSamplesToTimecode,
     } from "./src/timecode.js";
     import { scanWave } from "./src/wave.js";
+    import { scanVideo } from "./src/video.js";
     import { parseMetadataImport } from "./src/metadata-import.js";
     import { createMetadataExportController } from "./src/metadata-export-controller.js";
     import { renderAppVersion } from "./src/app-version.js";
@@ -276,6 +285,7 @@
     } from "./src/grouping.js";
 
     const WAV_SUFFIX = /\.(wav|wave)$/i;
+    const VIDEO_SUFFIX = /\.(mov|mp4|m4v)$/i;
     const METADATA_SUFFIX = /\.(ale|csv)$/i;
 
     const els = {
@@ -384,7 +394,7 @@
     }
 
     function refreshTakeGroups() {
-      takeGroupKeys = detectTakeGroupKeys(records.filter(r => !r._meta));
+      takeGroupKeys = detectTakeGroupKeys(records.filter(r => !r._meta && !r._video));
     }
 
     function isTakeTrack(record) {
@@ -583,14 +593,16 @@
 
     if (!("showDirectoryPicker" in window)) {
       setState("浏览器不支持", "warn");
-      els.statusLine.textContent = "Chrome / Edge recommended；也可以尝试直接拖入 WAV / ALE / CSV 文件夹";
+      els.statusLine.textContent = "Chrome / Edge recommended；也可以尝试直接拖入 WAV / MOV / MP4 / ALE / CSV 文件夹";
       els.previewBtn.disabled = true;
     }
 
     const fileImport = createFileImportController({
       els,
       scanWave,
+      scanVideo,
       wavSuffix: WAV_SUFFIX,
+      videoSuffix: VIDEO_SUFFIX,
       metadataSuffix: METADATA_SUFFIX,
       parseMetadataImport,
       setDirectoryHandle: handle => { directoryHandle = handle; },

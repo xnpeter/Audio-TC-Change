@@ -122,7 +122,7 @@ export function resolveFullMetadataCsv(items, options) {
   const rows = items.map(({ record, newTimeReference, fps, fpsValue }) => {
     const start = newTimeReference;
     const end = start + record.durationSamples;
-    const meta = record._meta || {};
+    const meta = record._meta || record._video || {};
     const sr = record.sampleRate || "";
     const ch = record.channels || "";
     const bps = record.bitsPerSample || "";
@@ -142,8 +142,8 @@ export function resolveFullMetadataCsv(items, options) {
       "Start TC": startTc,
       "End TC": endTc,
       "Start Frame": "0",
-      "End Frame": String(Number(end - start > 0n ? ((end - start) * BigInt(fps.rate.n) / BigInt(fps.rate.d) / BigInt(record.sampleRate || 48000)) - 1n : 0n)),
-      "Frames": String(Number(record.durationSamples > 0n ? (record.durationSamples * BigInt(fps.rate.n) / BigInt(fps.rate.d) / BigInt(record.sampleRate || 48000)) : 0n)),
+      "End Frame": String(Number(end - start > 0n ? ((end - start) * BigInt(fps.rate.n) / (BigInt(fps.rate.d) * BigInt(record.sampleRate || 48000))) - 1n : 0n)),
+      "Frames": String(Number(record.durationSamples > 0n ? (record.durationSamples * BigInt(fps.rate.n) / (BigInt(fps.rate.d) * BigInt(record.sampleRate || 48000))) : 0n)),
       "Bit Depth": meta.bitDepth || bps,
       "Field Dominance": meta.fieldDominance || "",
       "Data Level": meta.dataLevel || "Auto",
@@ -165,10 +165,10 @@ export function resolveFullAleText(items, defaultFpsValue, options) {
     "Bit Depth", "Field Dominance", "Data Level", "Audio Bit Depth",
     "Date Modified",
   ];
-  const rows = items.map(({ record, newTimeReference, fps }) => {
+  const rows = items.map(({ record, newTimeReference, fps, fpsValue }) => {
     const start = newTimeReference;
     const end = start + record.durationSamples;
-    const meta = record._meta || {};
+    const meta = record._meta || record._video || {};
     const sr = record.sampleRate || "";
     const ch = record.channels || "";
     const bps = record.bitsPerSample || "";
@@ -179,7 +179,7 @@ export function resolveFullAleText(items, defaultFpsValue, options) {
       record.name,
       record.parentPath || "",
       durationTc,
-      aleFpsLabel(meta.fpsValue || "24"),
+      aleFpsLabel(meta.fpsValue || fpsValue || "24"),
       sr,
       ch,
       meta.resolution || "",
@@ -188,8 +188,8 @@ export function resolveFullAleText(items, defaultFpsValue, options) {
       startTc,
       endTc,
       "0",
-      String(Number(end - start > 0n ? ((end - start) * BigInt(fps.rate.n) / BigInt(fps.rate.d) / BigInt(record.sampleRate || 48000)) - 1n : 0n)),
-      String(Number(record.durationSamples > 0n ? (record.durationSamples * BigInt(fps.rate.n) / BigInt(fps.rate.d) / BigInt(record.sampleRate || 48000)) : 0n)),
+      String(Number(end - start > 0n ? ((end - start) * BigInt(fps.rate.n) / (BigInt(fps.rate.d) * BigInt(record.sampleRate || 48000))) - 1n : 0n)),
+      String(Number(record.durationSamples > 0n ? (record.durationSamples * BigInt(fps.rate.n) / (BigInt(fps.rate.d) * BigInt(record.sampleRate || 48000))) : 0n)),
       meta.bitDepth || bps,
       meta.fieldDominance || "",
       meta.dataLevel || "Auto",

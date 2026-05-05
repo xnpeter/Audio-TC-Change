@@ -131,10 +131,14 @@ function parseCsv(text) {
 function normalizeFpsValue(raw) {
   const t = raw.trim();
   if (!t) return "24";
-  // Remove trailing zeros from decimal: "24.000" -> "24"
-  const parsed = parseFloat(t);
+  const isDF = /df$/i.test(t);
+  const numericPart = t.replace(/\s*df$/i, "").trim();
+  const parsed = parseFloat(numericPart);
   if (isNaN(parsed)) return "24";
-  // Map common values to preset keys
+  const near = (value, target) => Math.abs(value - target) < 0.0002;
+  if (isDF && near(parsed, 29.97)) return "29.97df";
+  if (isDF && near(parsed, 59.94)) return "59.94df";
+  if (isDF && near(parsed, 119.88)) return "119.88df";
   const map = {
     23.976: "23.976",
     24: "24",

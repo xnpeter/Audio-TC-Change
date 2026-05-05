@@ -169,7 +169,7 @@ export function parseTimecodeParts(raw, fps) {
     return Number(part);
   });
   const nominalFps = Number(nominalFpsFor(fps));
-  if (hh < 0 || mm > 59 || ss > 59) throw new Error("分钟和秒不能超过 59");
+  if (hh < 0 || hh > 9999 || mm > 59 || ss > 59) throw new Error("小时不能超过 9999，分钟和秒不能超过 59");
   if (ff >= nominalFps) throw new Error(`帧数必须小于 ${nominalFps}`);
   const dropFrames = Number(dropFramesFor(fps));
   if (dropFrames && ss === 0 && mm % 10 !== 0 && ff < dropFrames) {

@@ -57,8 +57,9 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     const dt = 1 / sampleRate;
     const rc = 1 / (2 * Math.PI * cutoff);
     const alpha = rc / (rc + dt);
+    out[0] = data[0];
     let previousIn = data[0];
-    let previousOut = 0;
+    let previousOut = out[0];
     for (let i = 1; i < data.length; i++) {
       const value = alpha * (previousOut + data[i] - previousIn);
       out[i] = value;

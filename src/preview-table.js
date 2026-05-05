@@ -24,6 +24,27 @@ export function createPreviewTableRenderer({
   combineEligibleGroups,
   resolveMetadataItems,
 }) {
+  function canWriteLtcResult(result) {
+    const record = result?.record;
+    return Boolean(result?.ok && record && !record._meta && !record._video && record.fileHandle?.createWritable);
+  }
+
+  function ltcFpsDisplay(ltc) {
+    if (!ltc?.ok || !ltc?.timecode || !ltc?.fps) return null;
+    return {
+      fps: ltc.fps,
+      source: "LTC检测",
+      display: `${ltc.fpsLabel || ltc.fpsValue || "LTC"} · LTC检测`,
+    };
+  }
+
+  function fpsBadgeClass(source) {
+    if (source === "iXML" || source === "ALE/CSV") return "fps-badge ixml";
+    if (source === "LTC检测") return "fps-badge ltc";
+    if (source === "视频元数据") return "fps-badge video";
+    return "fps-badge";
+  }
+
   function renderRows() {
     const records = getRecords();
     const previews = getPreviews();
@@ -67,19 +88,21 @@ export function createPreviewTableRenderer({
       for (const record of groupRecords) {
         const preview = previewByName.get(recordKey(record));
         const ltc = ltcResults.get(recordKey(record));
-        const fps = preview?.fps || recordFps(record);
-        const fpsSource = preview?.fpsSource || recordFpsSource(record);
+        const ltcFps = ltcFpsDisplay(ltc);
+        const fps = preview?.fps || ltcFps?.fps || recordFps(record);
+        const fpsSource = preview?.fpsSource || ltcFps?.source || recordFpsSource(record);
         const recordWasChanged = changedTimeReferences.get(recordKey(record)) === record.oldTimeReference;
         sampleRates.add(record.sampleRate);
         if (preview) sampleOffsets.add(preview.sampleOffset.toString());
         const row = document.createElement("tr");
         if (record._meta) row.classList.add("meta-record");
+        if (record._video) row.classList.add("video-record");
         const cells = [
           recordLabel(record),
           record.sampleRate || "-",
           record.channels || "-",
           record.bitsPerSample || "-",
-          preview?.fpsDisplay || recordFpsDisplay(record),
+          preview?.fpsDisplay || ltcFps?.display || recordFpsDisplay(record),
           samplesToTimecode(record.oldTimeReference, record.sampleRate || 48000, fps),
           preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate || 48000, fps) : "待预览",
           samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate || 48000, fps),
@@ -99,7 +122,7 @@ export function createPreviewTableRenderer({
             td.appendChild(name);
           } else if (index === 4) {
             const badge = document.createElement("span");
-            badge.className = `fps-badge${fpsSource === "iXML" || fpsSource === "ALE/CSV" ? " ixml" : ""}`;
+            badge.className = fpsBadgeClass(fpsSource);
             badge.textContent = String(cell);
             td.appendChild(badge);
           } else {
@@ -134,7 +157,7 @@ export function createPreviewTableRenderer({
     els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
     els.extractLtcBtn.disabled = records.length === 0;
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
-    els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(result => result.ok);
+    els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(canWriteLtcResult);
     els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;
   }
 

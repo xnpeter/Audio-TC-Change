@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v0.3.2";
+const CACHE_NAME = "bwf-timecode-batch-v0.4.0";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -25,6 +25,8 @@ const APP_ASSETS = [
   "./src/timecode-input.js",
   "./src/time-reference-write-controller.js",
   "./src/ui-state.js",
+  "./src/video.js",
+  "./src/video-metadata.js",
   "./src/wave-audio.js",
   "./src/wave-combine.js",
   "./src/wave.js",

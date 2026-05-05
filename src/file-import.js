@@ -20,7 +20,9 @@ async function importMetadataHandle(handle, parseMetadataImport, pushRecord, log
 export function createFileImportController({
   els,
   scanWave,
+  scanVideo,
   wavSuffix,
+  videoSuffix,
   metadataSuffix,
   parseMetadataImport,
   setDirectoryHandle,
@@ -54,8 +56,9 @@ export function createFileImportController({
       if (entry.kind === "directory") {
         await addDirectory(entry, relativePath);
       } else if (entry.kind === "file") {
-        if (wavSuffix.test(entry.name)) {
-          pushRecord(await scanWave(entry, {
+        if (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name)) {
+          const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+          pushRecord(await scanner(entry, {
             relativePath,
             parentPath: basePath,
             parentHandle: handle,
@@ -74,8 +77,9 @@ export function createFileImportController({
       setDirectoryHandle(handle);
       await addDirectory(handle);
     } else if (handle.kind === "file") {
-      if (wavSuffix.test(handle.name)) {
-        pushRecord(await scanWave(handle));
+      if (wavSuffix.test(handle.name) || videoSuffix?.test(handle.name)) {
+        const scanner = wavSuffix.test(handle.name) ? scanWave : scanVideo;
+        pushRecord(await scanner(handle));
       } else if (metadataSuffix && metadataSuffix.test(handle.name)) {
         await importMetadataHandle(handle, parseMetadataImport, pushRecord, log);
       }
@@ -87,25 +91,28 @@ export function createFileImportController({
     if (records.length <= count) return;
     const newRecords = records.slice(count);
     const metaRecords = newRecords.filter(r => r._meta);
-    const wavRecords = newRecords.filter(r => !r._meta);
+    const videoRecords = newRecords.filter(r => r._video);
+    const wavRecords = newRecords.filter(r => !r._meta && !r._video);
+    const ltcRecords = newRecords.filter(r => !r._meta);
     clearAfterImportState(count);
     refreshTakeGroups();
     els.undoBtn.disabled = true;
     els.previewBtn.disabled = false;
-    els.extractLtcBtn.disabled = wavRecords.length === 0;
+    els.extractLtcBtn.disabled = ltcRecords.length === 0;
     els.exportMetadataBtn.disabled = true;
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
     els.writeLtcBtn.disabled = true;
     setState("已载入");
     const parts = [];
     if (metaRecords.length) parts.push(`${metaRecords.length} 个视频元数据`);
+    if (videoRecords.length) parts.push(`${videoRecords.length} 个视频音轨`);
     if (wavRecords.length) {
       const takeText = takeGroupCount() ? `，识别到 ${takeGroupCount()} 个分轨 take` : "";
       parts.push(`${wavRecords.length} 个 WAV${takeText}`);
     }
-    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；输入偏移后点击预览`;
+    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC`;
     renderRows();
-    log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${metaRecords.length} metadata)`);
+    log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${videoRecords.length} video, ${metaRecords.length} metadata)`);
 
     if (newRecords.length) {
       const fpsMeta = detectedMetadataFps(newRecords);
@@ -148,15 +155,17 @@ export function createFileImportController({
       for (const child of entries) {
         await addEntry(child, `${basePath}/${child.name}`);
       }
-    } else if (entry.isFile && wavSuffix.test(entry.name)) {
+    } else if (entry.isFile && (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name))) {
       const file = await entryFile(entry);
-      pushRecord(await scanWave({
+      const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+      pushRecord(await scanner({
         kind: "file",
         name: entry.name,
         getFile: async () => file,
       }, {
         relativePath: basePath,
         parentPath: basePath.split("/").slice(0, -1).join("/"),
+        parentHandle: null,
       }));
     } else if (entry.isFile && metadataSuffix && metadataSuffix.test(entry.name)) {
       const file = await entryFile(entry);
@@ -209,7 +218,7 @@ export function createFileImportController({
   }
 
   async function chooseAudioPath() {
-    if (!window.showDirectoryPicker) throw new Error("当前浏览器不支持点击选择文件夹，请直接拖入音频文件夹");
+    if (!window.showDirectoryPicker) throw new Error("当前浏览器不支持点击选择文件夹，请直接拖入音频/视频文件夹");
     const count = getRecords().length;
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     await addHandle(handle);
