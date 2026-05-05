@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v0.2.1";
+const CACHE_NAME = "bwf-timecode-batch-v0.3.0";
 const APP_ASSETS = [
   "./",
   "./index.html",
