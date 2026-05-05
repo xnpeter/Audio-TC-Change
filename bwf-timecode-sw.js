@@ -19,6 +19,7 @@ const APP_ASSETS = [
   "./src/poly-combine-controller.js",
   "./src/preview-table.js",
   "./src/pwa.js",
+  "./src/style.css",
   "./src/timecode.js",
   "./src/timecode-input.js",
   "./src/time-reference-write-controller.js",
