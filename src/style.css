@@ -1002,6 +1002,11 @@ tbody tr:hover { background: #f8fbfb; }
   background: #eef4f6;
 }
 
+.meta-record td:first-child {
+  border-left: 3px solid #d4a574;
+  padding-left: 12px;
+}
+
 .group-title {
   display: inline-flex;
   align-items: center;

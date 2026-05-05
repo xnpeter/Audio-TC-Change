@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v0.3.0";
+const CACHE_NAME = "bwf-timecode-batch-v0.3.2";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -15,6 +15,7 @@ const APP_ASSETS = [
   "./src/ltc-worker.js",
   "./src/metadata-export-controller.js",
   "./src/metadata-export.js",
+  "./src/metadata-import.js",
   "./src/offset-input.js",
   "./src/poly-combine-controller.js",
   "./src/preview-table.js",

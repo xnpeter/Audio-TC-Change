@@ -17,7 +17,7 @@
     <header>
       <div class="title-block">
         <h1 class="app-title">Audio TC Change <span id="appVersionBadge" class="app-version"></span></h1>
-        <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码</div>
+        <div class="subtitle">批量查看并修正 WAV / BWF 起始时间码 + 达芬奇 ALE/CSV 元数据</div>
       </div>
       <div class="header-meta">
         <span class="badge">RIFF/WAV bext TimeReference</span>
@@ -156,7 +156,7 @@
       <section class="workspace">
         <div class="table-head">
           <div class="table-title">音频文件 <span id="phasePill" class="phase">原始信息</span></div>
-          <div id="statusLine" class="status">拖入音频文件后显示原始信息</div>
+          <div id="statusLine" class="status">拖入 WAV / ALE / CSV 文件后显示原始信息</div>
         </div>
         <div class="table-wrap">
           <table id="previewTable" hidden>
@@ -181,7 +181,7 @@
             </thead>
             <tbody id="previewBody"></tbody>
           </table>
-          <div id="emptyState" class="empty" role="button" tabindex="0">点击选择或拖入音频文件</div>
+          <div id="emptyState" class="empty" role="button" tabindex="0">点击选择或拖入 WAV / ALE / CSV 文件</div>
         </div>
         <div id="log" class="log">Ready.</div>
       </section>
@@ -247,6 +247,7 @@
       samplesToTimecode as formatSamplesToTimecode,
     } from "./src/timecode.js";
     import { scanWave } from "./src/wave.js";
+    import { parseMetadataImport } from "./src/metadata-import.js";
     import { createMetadataExportController } from "./src/metadata-export-controller.js";
     import { renderAppVersion } from "./src/app-version.js";
     import { createConfirmFlows } from "./src/confirm-flows.js";
@@ -275,6 +276,7 @@
     } from "./src/grouping.js";
 
     const WAV_SUFFIX = /\.(wav|wave)$/i;
+    const METADATA_SUFFIX = /\.(ale|csv)$/i;
 
     const els = {
       appVersionBadge: document.getElementById("appVersionBadge"),
@@ -382,7 +384,7 @@
     }
 
     function refreshTakeGroups() {
-      takeGroupKeys = detectTakeGroupKeys(records);
+      takeGroupKeys = detectTakeGroupKeys(records.filter(r => !r._meta));
     }
 
     function isTakeTrack(record) {
@@ -581,7 +583,7 @@
 
     if (!("showDirectoryPicker" in window)) {
       setState("浏览器不支持", "warn");
-      els.statusLine.textContent = "Chrome / Edge recommended；也可以尝试直接拖入音频文件夹";
+      els.statusLine.textContent = "Chrome / Edge recommended；也可以尝试直接拖入 WAV / ALE / CSV 文件夹";
       els.previewBtn.disabled = true;
     }
 
@@ -589,6 +591,8 @@
       els,
       scanWave,
       wavSuffix: WAV_SUFFIX,
+      metadataSuffix: METADATA_SUFFIX,
+      parseMetadataImport,
       setDirectoryHandle: handle => { directoryHandle = handle; },
       getRecords: () => records,
       pushRecord: record => records.push(record),

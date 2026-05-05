@@ -46,11 +46,16 @@ export function createTimeReferenceWriteController({
   renderRows,
 }) {
   async function refreshRecordsFromHandles() {
-    setRecords(await Promise.all(getRecords().map(record => scanWave(record.fileHandle, {
-      relativePath: record.relativePath,
-      parentPath: record.parentPath,
-      parentHandle: record.parentHandle,
-    }))));
+    const current = getRecords();
+    const refreshed = await Promise.all(current.map(record => {
+      if (record._meta) return record;
+      return scanWave(record.fileHandle, {
+        relativePath: record.relativePath,
+        parentPath: record.parentPath,
+        parentHandle: record.parentHandle,
+      });
+    }));
+    setRecords(refreshed);
     refreshTakeGroups();
   }
 
@@ -103,8 +108,15 @@ export function createTimeReferenceWriteController({
     setActiveOffset(firstOffset);
     renderRows();
     els.applyBtn.disabled = false;
-    setState("可写入");
-    els.statusLine.textContent = `${nextPreviews.length} 个文件已生成修改预览`;
+    const allMeta = nextPreviews.every(p => p._meta);
+    if (allMeta) {
+      els.applyBtn.disabled = true;
+      setState("可导出");
+      els.statusLine.textContent = `${nextPreviews.length} 个视频元数据已生成修改预览，可直接导出 ALE/CSV`;
+    } else {
+      setState("可写入");
+      els.statusLine.textContent = `${nextPreviews.length} 个文件已生成修改预览`;
+    }
     log(`Preview OK: ${nextPreviews.length} files, per-file FPS from iXML where available, UI fallback ${fpsLabel(fallbackFps)}`);
   }
 
@@ -232,10 +244,31 @@ export function createTimeReferenceWriteController({
   async function applyChanges() {
     const previews = getPreviews();
     if (!previews.length) throw new Error("没有可写入的预览");
-    const ok = await confirmWriteChanges(previews.length);
+    const wavPreviews = previews.filter(p => !p._meta);
+    const metaPreviews = previews.filter(p => p._meta);
+
+    if (!wavPreviews.length && !metaPreviews.length) throw new Error("没有可应用的预览");
+
+    // For metadata-only: just apply virtually (update changedTimeReferences, clear previews)
+    if (!wavPreviews.length) {
+      setChangedTimeReferences(new Map(metaPreviews.map(p => [recordKey(p), p.newTimeReference])));
+      setPreviews([]);
+      setActiveOffset(null);
+      els.applyBtn.disabled = true;
+      els.undoBtn.disabled = true;
+      els.exportMetadataBtn.disabled = false;
+      setState("可导出");
+      els.statusLine.textContent = `${metaPreviews.length} 个元数据已应用偏移，可导出为 ALE/CSV`;
+      renderRows();
+      log(`Metadata Apply OK: ${metaPreviews.length} clips (virtual)`);
+      return;
+    }
+
+    // Mix of WAV + metadata: write WAV files, virtual-apply metadata
+    const ok = await confirmWriteChanges(wavPreviews.length);
     if (!ok) return;
 
-    const appliedPreviews = previews.slice();
+    const appliedPreviews = wavPreviews.slice();
     setState("写入中", "warn");
     els.applyBtn.disabled = true;
     els.undoBtn.disabled = true;
@@ -251,18 +284,19 @@ export function createTimeReferenceWriteController({
       ixmlInfo: preview.ixmlInfo,
     }));
 
-    updateWriteProgress("正在写入…", "", 0, appliedPreviews.length);
+    const total = appliedPreviews.length + metaPreviews.length;
+    updateWriteProgress("正在写入…", "", 0, total);
     els.progressOverlay.classList.add("show");
 
     try {
       for (let i = 0; i < appliedPreviews.length; i++) {
         const preview = appliedPreviews[i];
-        updateWriteProgress("正在写入…", preview.name, i, appliedPreviews.length);
+        updateWriteProgress("正在写入…", preview.name, i, total);
         await writeTimeReference(preview, preview.newTimeReference);
-        updateWriteProgress("正在写入…", preview.name, i + 1, appliedPreviews.length);
+        updateWriteProgress("正在写入…", preview.name, i + 1, total);
       }
 
-      updateWriteProgress("正在校验…", "校验写入结果", appliedPreviews.length, appliedPreviews.length);
+      updateWriteProgress("正在校验…", "校验写入结果", total, total);
 
       for (const preview of appliedPreviews) {
         const fresh = await scanWave(preview.fileHandle);
@@ -274,22 +308,28 @@ export function createTimeReferenceWriteController({
 
       let manifestName = null;
       try {
-        updateWriteProgress("正在保存清单…", getDirectoryHandle() ? "生成 CSV manifest" : "已跳过清单", appliedPreviews.length, appliedPreviews.length);
+        updateWriteProgress("正在保存清单…", getDirectoryHandle() ? "生成 CSV manifest" : "已跳过清单", total, total);
         manifestName = await writeManifestToFolder();
       } catch (error) {
         log(`Manifest WARN: ${error.message}`);
       }
 
+      const allChanged = new Map(appliedPreviews.map(preview => [recordKey(preview), preview.newTimeReference]));
+      for (const mp of metaPreviews) {
+        allChanged.set(recordKey(mp), mp.newTimeReference);
+      }
+
       setLastUndoBatch(undoBatch);
       els.undoBtn.disabled = false;
-      setChangedTimeReferences(new Map(appliedPreviews.map(preview => [recordKey(preview), preview.newTimeReference])));
+      setChangedTimeReferences(allChanged);
       setPreviews([]);
       setActiveOffset(null);
       await refreshRecordsFromHandles();
       renderRows();
       setState("完成");
-      els.statusLine.textContent = manifestName ? `写入完成；清单：${manifestName}` : "写入完成";
-      log(`Write OK: ${appliedPreviews.length} files${manifestName ? `; ${manifestName}` : ""}`);
+      const extra = metaPreviews.length ? ` + ${metaPreviews.length} 元数据` : "";
+      els.statusLine.textContent = manifestName ? `写入完成${extra}；清单：${manifestName}` : `写入完成${extra}`;
+      log(`Write OK: ${appliedPreviews.length} files${metaPreviews.length ? ` + ${metaPreviews.length} metadata` : ""}${manifestName ? `; ${manifestName}` : ""}`);
 
       els.toast.textContent = manifestName
         ? `✅ 写入完成 — ${appliedPreviews.length} 个文件，已保存清单`
@@ -298,7 +338,7 @@ export function createTimeReferenceWriteController({
       setTimeout(() => els.toast.classList.remove("show"), 4500);
     } finally {
       els.progressOverlay.classList.remove("show");
-      updateWriteProgress("正在写入…", "", 0, appliedPreviews.length || 1);
+      updateWriteProgress("正在写入…", "", 0, total || 1);
       els.undoBtn.disabled = !getLastUndoBatch();
     }
   }
