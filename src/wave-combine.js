@@ -1,4 +1,5 @@
 import { LITTLE, readDataView } from "./wave.js";
+import { parseFps } from "./timecode.js";
 import {
   combineSortValue,
   isZoomLrFile,
@@ -95,6 +96,29 @@ export function commonValue(recordsToCheck, getter) {
   return values.every(value => value === values[0]) ? values[0] : "";
 }
 
+export function commonValueState(recordsToCheck, getter) {
+  const values = recordsToCheck
+    .map(getter)
+    .filter(value => value !== null && value !== undefined && value !== "");
+  if (!values.length) return { value: "", hasValues: false, conflict: false };
+  const value = values[0];
+  return {
+    value: values.every(item => item === value) ? value : "",
+    hasValues: true,
+    conflict: !values.every(item => item === value),
+  };
+}
+
+export function ixmlFpsMetadataForValue(value) {
+  if (!value) return { timecodeRate: "", timecodeFlag: "" };
+  const fps = parseFps(value);
+  const rate = fps.rate || fps;
+  return {
+    timecodeRate: `${rate.n}/${rate.d}`,
+    timecodeFlag: fps.drop ? "DF" : "NDF",
+  };
+}
+
 export function combineBextDescription(sourceInfo, tracks) {
   const lines = ["zNOTE=Combined by Audio TC Change"];
   if (sourceInfo.scene) lines.unshift(`zSCENE=${sourceInfo.scene}`);
@@ -105,14 +129,19 @@ export function combineBextDescription(sourceInfo, tracks) {
   return lines.join("\r\n");
 }
 
-export function combineSourceInfo(groupRecords) {
+export function combineSourceInfo(groupRecords, options = {}) {
+  const timecodeRate = commonValueState(groupRecords, record => record.ixmlInfo?.timecodeRate?.value || "");
+  const timecodeFlag = commonValueState(groupRecords, record => record.ixmlInfo?.timecodeFlag?.value || "");
+  const fallbackFps = !timecodeRate.hasValues && !timecodeRate.conflict
+    ? ixmlFpsMetadataForValue(options.fallbackFpsValue)
+    : null;
   return {
     project: commonValue(groupRecords, record => ixmlFieldValue(record, "PROJECT")),
     scene: commonValue(groupRecords, record => ixmlFieldValue(record, "SCENE")),
     take: commonValue(groupRecords, record => ixmlFieldValue(record, "TAKE")),
     tape: commonValue(groupRecords, record => ixmlFieldValue(record, "TAPE")),
-    timecodeRate: commonValue(groupRecords, record => record.ixmlInfo?.timecodeRate?.value || ""),
-    timecodeFlag: commonValue(groupRecords, record => record.ixmlInfo?.timecodeFlag?.value || ""),
+    timecodeRate: timecodeRate.value || fallbackFps?.timecodeRate || "",
+    timecodeFlag: timecodeRate.conflict ? "" : timecodeFlag.value || fallbackFps?.timecodeFlag || "",
     originationDate: commonValue(groupRecords, record => record.bextInfo?.originationDate || ""),
     originationTime: commonValue(groupRecords, record => record.bextInfo?.originationTime || ""),
   };
@@ -152,11 +181,13 @@ export function ixmlTextForCombine(baseRecord, sourceInfo, tracks) {
     ixmlOptionalLine("SCENE", sourceInfo.scene),
     ixmlOptionalLine("TAKE", sourceInfo.take),
     ixmlOptionalLine("TAPE", sourceInfo.tape),
-    ixmlOptionalLine("TIMECODE_RATE", sourceInfo.timecodeRate),
-    ixmlOptionalLine("TIMECODE_FLAG", sourceInfo.timecodeFlag),
-    `\t<TIMESTAMP_SAMPLE_RATE>${baseRecord.sampleRate}</TIMESTAMP_SAMPLE_RATE>`,
-    `\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>${parts.hi.toString().padStart(10, "0")}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>`,
-    `\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>${parts.lo.toString().padStart(10, "0")}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>`,
+    "\t<SPEED>",
+    sourceInfo.timecodeRate ? `\t\t<TIMECODE_RATE>${xmlEscape(sourceInfo.timecodeRate)}</TIMECODE_RATE>` : null,
+    sourceInfo.timecodeFlag ? `\t\t<TIMECODE_FLAG>${xmlEscape(sourceInfo.timecodeFlag)}</TIMECODE_FLAG>` : null,
+    `\t\t<TIMESTAMP_SAMPLE_RATE>${baseRecord.sampleRate}</TIMESTAMP_SAMPLE_RATE>`,
+    `\t\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>${parts.hi}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>`,
+    `\t\t<TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>${parts.lo}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>`,
+    "\t</SPEED>",
     "\t<TRACK_LIST>",
     `\t\t<TRACK_COUNT>${tracks.length}</TRACK_COUNT>`,
     trackXml,
@@ -243,7 +274,7 @@ export async function writeCombinedPolyToWritable(key, groupRecords, writable, o
   const progressTotal = options.progressTotal ?? 1;
   const plan = validateCombineGroup(groupRecords, { groupLabel: options.groupLabel });
   const groupName = safeWaveBaseName(shortGroupLabel(key));
-  const sourceInfo = combineSourceInfo(groupRecords);
+  const sourceInfo = combineSourceInfo(groupRecords, { fallbackFpsValue: options.fallbackFpsValue });
   const state = { position: 0 };
   const riffHeader = new Uint8Array(12);
   riffHeader.set([82, 73, 70, 70], 0);

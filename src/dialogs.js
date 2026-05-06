@@ -5,7 +5,17 @@ export function createDialogController(els) {
     els.confirmAltBtn.onclick = null;
   }
 
-  function showConfirmDialog({ title, copy, cancelText = "取消", confirmText = "确认", danger = false }) {
+  function showConfirmDialog({
+    title,
+    copy,
+    cancelText = "取消",
+    confirmText = "确认",
+    altText = "",
+    cancelResult = false,
+    confirmResult = true,
+    altResult = "alt",
+    danger = false,
+  }) {
     return new Promise(resolve => {
       const previousFocus = document.activeElement;
       let settled = false;
@@ -16,6 +26,7 @@ export function createDialogController(els) {
         els.confirmOverlay.classList.remove("show");
         els.confirmOverlay.setAttribute("aria-hidden", "true");
         els.confirmCancelBtn.removeEventListener("click", onCancel);
+        els.confirmAltBtn.removeEventListener("click", onAlt);
         els.confirmWriteBtn.removeEventListener("click", onConfirm);
         document.removeEventListener("keydown", onKeydown);
         previousFocus?.focus?.();
@@ -23,17 +34,21 @@ export function createDialogController(els) {
       }
 
       function onCancel() {
-        close(false);
+        close(cancelResult);
+      }
+
+      function onAlt() {
+        close(altResult);
       }
 
       function onConfirm() {
-        close(true);
+        close(confirmResult);
       }
 
       function onKeydown(event) {
         if (event.key === "Escape") {
           event.preventDefault();
-          close(false);
+          close(cancelResult);
         }
       }
 
@@ -41,11 +56,16 @@ export function createDialogController(els) {
       els.confirmCopy.innerHTML = copy;
       els.confirmCancelBtn.textContent = cancelText;
       resetAltButton();
+      if (altText) {
+        els.confirmAltBtn.textContent = altText;
+        els.confirmAltBtn.hidden = false;
+      }
       els.confirmWriteBtn.textContent = confirmText;
       els.confirmWriteBtn.classList.toggle("danger", danger);
       els.confirmOverlay.classList.add("show");
       els.confirmOverlay.setAttribute("aria-hidden", "false");
       els.confirmCancelBtn.addEventListener("click", onCancel);
+      els.confirmAltBtn.addEventListener("click", onAlt);
       els.confirmWriteBtn.addEventListener("click", onConfirm);
       document.addEventListener("keydown", onKeydown);
       requestAnimationFrame(() => els.confirmCancelBtn.focus());
