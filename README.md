@@ -74,7 +74,7 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 - 支持混合帧率素材的时间码偏移。
 - 读取 iXML 中的帧率信息，并在文件 metadata 与界面帧率不一致时提示确认。
 - 针对 ZOOM H 系列多轨 mono 文件结构做分组显示，例如 `ZOOM0001_Tr1.WAV`、`ZOOM0001_Tr2.WAV`。
-- 将 ZOOM H 系列分轨 mono/stereo take 批量合并为 Poly WAV，并写入 iXML track name。
+- 将 ZOOM H6 常见的 stereo LR + mono 分轨 take 批量合并为 Poly WAV，并写入 iXML track name。
 - 写入前预览结果，写入后生成 CSV 修改清单。
 - 支持撤销上一次写入。
 
@@ -217,7 +217,7 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 - Handle mixed-frame-rate material during offset operations.
 - Read iXML frame-rate metadata and warn when it differs from the UI setting.
 - Group ZOOM H-series style split mono files, such as `ZOOM0001_Tr1.WAV` and `ZOOM0001_Tr2.WAV`.
-- Batch-combine ZOOM H-series split mono/stereo takes into Poly WAV with iXML track names.
+- Batch-combine ZOOM H6-style stereo LR + mono split-track takes into Poly WAV with iXML track names.
 - Preview before writing and generate a CSV manifest after writing.
 - Undo the previous write operation.
 
