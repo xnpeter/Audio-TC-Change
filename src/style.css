@@ -1301,6 +1301,10 @@ tbody tr:hover { background: #f8fbfb; }
   .calc-operator { width: 100%; }
   .calculator .calc-swap-btn { width: 100%; }
   .calc-equals, .calc-result, .calc-actions { grid-column: auto; }
+  .calc-equals {
+    justify-self: center;
+    width: 100%;
+  }
   .calc-actions { display: grid; grid-template-columns: 1fr; }
   button { width: 100%; justify-content: center; }
   .table-head { align-items: flex-start; flex-direction: column; }

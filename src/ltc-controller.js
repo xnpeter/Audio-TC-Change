@@ -81,7 +81,7 @@ export function createLtcController({
     };
   }
 
-  async function detectLtcAutoWorker(record, fps, scanSeconds = null) {
+  async function detectLtcAutoWorker(record, fps, scanSeconds = null, options = {}) {
     const sampleLimit = scanSeconds == null
       ? record.durationSamples
       : BigInt(Math.max(record.sampleRate * scanSeconds, record.sampleRate));
@@ -105,6 +105,7 @@ export function createLtcController({
         audioFormat: record.audioFormat,
         blockAlign: record.blockAlign,
       },
+      allowSoftSync: options.allowSoftSync !== false,
     }, [buffer]);
     const revived = reviveWorkerLtcResult(result);
     if (revived) revived.scanSeconds = scanSeconds;
@@ -131,7 +132,7 @@ export function createLtcController({
 
   async function detectLtcAuto(record, fps) {
     if (ltcWorkerPool) {
-      const fast = await detectLtcAutoWorker(record, fps, 5);
+      const fast = await detectLtcAutoWorker(record, fps, 5, { allowSoftSync: false });
       if (isHighQualityFastLtc(fast)) {
         return tagLtcAutoResult(fast, { fastScan: true });
       }

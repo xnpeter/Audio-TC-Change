@@ -382,6 +382,7 @@
     let lastUndoBatch = null;
     let ltcResults = new Map();
     let takeGroupKeys = new Set();
+    let combinedPolyKeys = new Set();
     let changedTimeReferences = new Map();
 
     function groupKey(record) {
@@ -498,6 +499,7 @@
       getActiveOffset: () => activeOffset,
       getLtcResults: () => ltcResults,
       getChangedTimeReferences: () => changedTimeReferences,
+      getCombinedPolyKeys: () => combinedPolyKeys,
       recordsByGroup,
       isTakeTrack,
       recordFps,
@@ -522,9 +524,11 @@
       getPreviews: () => previews,
       groupLabel,
       getFpsValue: () => els.fpsInput.value,
+      setCombinedPolyKeys: keys => { combinedPolyKeys = keys; },
       setState,
       updateWriteProgress,
       log,
+      renderRows,
     });
 
     const timeReferenceWrite = createTimeReferenceWriteController({
@@ -612,7 +616,7 @@
       clearAfterImportState: count => {
         lastUndoBatch = null;
         ltcResults = new Map();
-        if (count === 0) changedTimeReferences = new Map();
+        if (count === 0) { changedTimeReferences = new Map(); combinedPolyKeys = new Set(); }
       },
       refreshTakeGroups,
       takeGroupCount: () => takeGroupKeys.size,

@@ -11,9 +11,11 @@ export function createPolyCombineController({
   getPreviews,
   groupLabel,
   getFpsValue,
+  setCombinedPolyKeys,
   setState,
   updateWriteProgress,
   log,
+  renderRows,
 }) {
   function previewMapForGroups(groups) {
     const previews = getPreviews?.() || [];
@@ -117,7 +119,13 @@ export function createPolyCombineController({
         results.push(result);
         updateWriteProgress("正在合并 Poly…", result.name, i + 1, groupsToWrite.length);
       }
-      setState("完成");
+      const stateLabel = choice === "preview" ? "已更改并合并" : "已合并";
+      setState(stateLabel);
+      const allRecordKeys = new Set(
+        groupsToWrite.flatMap(([, groupRecords]) => groupRecords.map(record => recordKey(record)))
+      );
+      setCombinedPolyKeys(allRecordKeys);
+      renderRows();
       els.statusLine.textContent = `Poly 合并完成：${results.length} 个文件`;
       log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}${choice === "preview" ? "; used preview timecode" : ""}`);
       els.toast.textContent = `✅ Poly 合并完成 — ${results.length} 个文件`;

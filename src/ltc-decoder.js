@@ -555,6 +555,14 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     return { label: "低", rank: 1 };
   },
 
+  isHighQualityCandidate(candidate) {
+    return candidate?.qualityRank >= 3 &&
+      candidate.lockedFrames >= 6 &&
+      candidate.halfBitError <= 0.0025 &&
+      candidate.rejectRatio <= 0.08 &&
+      candidate.confidence >= 0.82;
+  },
+
   compareResults(a, b) {
     if ((b.qualityRank || 0) !== (a.qualityRank || 0)) return (b.qualityRank || 0) - (a.qualityRank || 0);
     if (Math.abs((a.halfBitError || 1) - (b.halfBitError || 1)) > 0.00025) return (a.halfBitError || 1) - (b.halfBitError || 1);
@@ -652,6 +660,12 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
         candidate.conditioned = Boolean(variant.conditioned);
         candidate.conditionProfile = variant.conditionProfile || "raw";
         if (!best || this.compareResults(candidate, best) < 0) best = candidate;
+        if (this.isHighQualityCandidate(best)) return {
+          ...best,
+          channelIndex,
+          channelLabel: `${channelIndex + 1}`,
+          halfBitSamples,
+        };
       }
     }
     if (!best && allowSoftSync) {
@@ -722,13 +736,22 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
           if (result) result.dropMismatch = result.drop !== Boolean(fps.drop);
         }
         if (result) {
-          results.push({
+          const item = {
             ...result,
             fps,
             fpsValue: value,
             fpsLabel: fpsSelectLabel(value),
             preferred: value === preferredValue,
-          });
+          };
+          results.push(item);
+          if (value === preferredValue && this.isHighQualityCandidate(item)) {
+            return {
+              best: item,
+              preferred: item,
+              results,
+              rejectedChannels,
+            };
+          }
         }
       }
     }

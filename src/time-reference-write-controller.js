@@ -226,7 +226,7 @@ export function createTimeReferenceWriteController({
       setChangedTimeReferences(new Map(writableItems.map(({ record, ltc }) => [recordKey(record), ltc.newTimeReference])));
       await refreshRecordsFromHandles();
       renderRows();
-      setState("完成");
+      setState("已更改");
       els.statusLine.textContent = `LTC 写入完成：${writableItems.length} 个文件`;
       log(`LTC Write OK: ${writableItems.length} files`);
       els.toast.textContent = `✅ LTC 写入完成 — ${writableItems.length} 个文件`;
@@ -329,7 +329,7 @@ export function createTimeReferenceWriteController({
       setActiveOffset(null);
       await refreshRecordsFromHandles();
       renderRows();
-      setState("完成");
+      setState("已更改");
       const extra = metaPreviews.length ? ` + ${metaPreviews.length} 元数据` : "";
       els.statusLine.textContent = manifestName ? `写入完成${extra}；清单：${manifestName}` : `写入完成${extra}`;
       log(`Write OK: ${appliedPreviews.length} files${metaPreviews.length ? ` + ${metaPreviews.length} metadata` : ""}${manifestName ? `; ${manifestName}` : ""}`);

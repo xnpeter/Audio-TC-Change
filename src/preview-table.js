@@ -12,6 +12,7 @@ export function createPreviewTableRenderer({
   getActiveOffset,
   getLtcResults,
   getChangedTimeReferences,
+  getCombinedPolyKeys,
   recordsByGroup,
   isTakeTrack,
   recordFps,
@@ -55,6 +56,7 @@ export function createPreviewTableRenderer({
     const previews = getPreviews();
     const ltcResults = getLtcResults();
     const changedTimeReferences = getChangedTimeReferences();
+    const combinedPolyKeys = getCombinedPolyKeys?.() ?? new Set();
     const activeOffset = getActiveOffset();
 
     els.previewBody.textContent = "";
@@ -145,10 +147,22 @@ export function createPreviewTableRenderer({
           }
           row.appendChild(td);
         });
+        const recordWasCombined = combinedPolyKeys.has(recordKey(record));
         const result = document.createElement("td");
         const pill = document.createElement("span");
-        pill.className = preview || recordWasChanged ? "pill ok" : "pill idle";
-        pill.textContent = preview ? "Ready" : (recordWasChanged ? "已更改" : "Original");
+        const hasOp = preview || recordWasChanged || recordWasCombined;
+        pill.className = hasOp ? "pill ok" : "pill idle";
+        if (preview && !recordWasCombined) {
+          pill.textContent = "Ready";
+        } else if (recordWasChanged && recordWasCombined) {
+          pill.textContent = "已更改并合并";
+        } else if (recordWasChanged) {
+          pill.textContent = "已更改";
+        } else if (recordWasCombined) {
+          pill.textContent = "已合并";
+        } else {
+          pill.textContent = "Original";
+        }
         result.appendChild(pill);
         row.appendChild(result);
         els.previewBody.appendChild(row);

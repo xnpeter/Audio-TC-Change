@@ -407,6 +407,9 @@ export const LTC_WORKER_CODE = `
       if (candidate.confidence >= 0.62 && candidate.lockedFrames >= 3 && candidate.halfBitError <= 0.008 && candidate.rejectRatio <= 0.2) return { label: "中", rank: 2 };
       return { label: "低", rank: 1 };
     },
+    isHighQualityCandidate(candidate) {
+      return candidate?.qualityRank >= 3 && candidate.lockedFrames >= 6 && candidate.halfBitError <= 0.0025 && candidate.rejectRatio <= 0.08 && candidate.confidence >= 0.82;
+    },
     compareResults(a, b) {
       if ((b.qualityRank || 0) !== (a.qualityRank || 0)) return (b.qualityRank || 0) - (a.qualityRank || 0);
       if (Math.abs((a.halfBitError || 1) - (b.halfBitError || 1)) > 0.00025) return (a.halfBitError || 1) - (b.halfBitError || 1);
@@ -454,6 +457,7 @@ export const LTC_WORKER_CODE = `
           candidate.conditioned = Boolean(variant.conditioned);
           candidate.conditionProfile = variant.conditionProfile || "raw";
           if (!best || this.compareResults(candidate, best) < 0) best = candidate;
+          if (this.isHighQualityCandidate(best)) return { ...best, channelIndex, channelLabel: String(channelIndex + 1), halfBitSamples: expectedHalfBitSamples };
         }
       }
       if (!best && allowSoftSync) {
@@ -469,8 +473,9 @@ export const LTC_WORKER_CODE = `
       }
       return best ? { ...best, channelIndex, channelLabel: String(channelIndex + 1), halfBitSamples: expectedHalfBitSamples } : null;
     },
-    detectAuto(buffer, record, preferredValue, values) {
+    detectAuto(buffer, record, preferredValue, values, options = {}) {
       const results = [], rejectedChannels = [];
+      const allowSoftSync = options.allowSoftSync !== false;
       for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
         const channel = this.readChannel(buffer, record, channelIndex);
         const quick = this.quickRejectChannel(channel, record.sampleRate);
@@ -483,12 +488,18 @@ export const LTC_WORKER_CODE = `
           const fps = parseFps(value);
           const fpsValue = Number(fps.rate.n) / Number(fps.rate.d);
           const expectedHalfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
-          let result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, true, value === preferredValue);
+          let result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, true, allowSoftSync && value === preferredValue);
           if (!result && value === preferredValue) {
-            result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, false, true);
+            result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, false, allowSoftSync);
             if (result) result.dropMismatch = result.drop !== Boolean(fps.drop);
           }
-          if (result) results.push({ ...result, fpsValue: value, preferred: value === preferredValue });
+          if (result) {
+            const item = { ...result, fpsValue: value, preferred: value === preferredValue };
+            results.push(item);
+            if (value === preferredValue && this.isHighQualityCandidate(item)) {
+              return { best: item, preferred: item, results, rejectedChannels };
+            }
+          }
         }
       }
       results.sort((a, b) => {
@@ -499,9 +510,9 @@ export const LTC_WORKER_CODE = `
     },
   };
   self.onmessage = event => {
-    const { id, buffer, record, preferredValue, values } = event.data;
+    const { id, buffer, record, preferredValue, values, allowSoftSync } = event.data;
     try {
-      self.postMessage({ id, ok: true, result: LtcWorkerDecoder.detectAuto(buffer, record, preferredValue, values) });
+      self.postMessage({ id, ok: true, result: LtcWorkerDecoder.detectAuto(buffer, record, preferredValue, values, { allowSoftSync }) });
     } catch (error) {
       self.postMessage({ id, ok: false, error: error.message || String(error) });
     }
