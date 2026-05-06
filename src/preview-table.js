@@ -13,6 +13,8 @@ export function createPreviewTableRenderer({
   getLtcResults,
   getChangedTimeReferences,
   getCombinedPolyKeys,
+  getSelectedRecordKeys,
+  setSelectedRecordKeys,
   recordsByGroup,
   isTakeTrack,
   recordFps,
@@ -51,6 +53,76 @@ export function createPreviewTableRenderer({
     return ltc.qualityRank === 1 ? "ltc-value-warn" : "ltc-value-ok";
   }
 
+  let lastSelectedKey = null;
+
+  function selectableRecords() {
+    return getRecords().filter(record => !record._meta);
+  }
+
+  function setGroupSelection(groupRecords, event) {
+    if (!setSelectedRecordKeys) return;
+    const keys = groupRecords.filter(record => !record._meta).map(recordKey);
+    if (!keys.length) return;
+    const selected = new Set(getSelectedRecordKeys?.() ?? []);
+    const allSelected = keys.every(key => selected.has(key));
+    if (event.metaKey || event.ctrlKey) {
+      for (const key of keys) {
+        if (allSelected) selected.delete(key);
+        else selected.add(key);
+      }
+    } else {
+      selected.clear();
+      for (const key of keys) selected.add(key);
+    }
+    lastSelectedKey = keys[keys.length - 1];
+    setSelectedRecordKeys(selected);
+    updateSelectionUi();
+  }
+
+  function updateSelectionUi() {
+    const selected = getSelectedRecordKeys?.() ?? new Set();
+    els.previewBody.querySelectorAll("tr[data-record-key]").forEach(row => {
+      row.classList.toggle("selected-row", selected.has(row.dataset.recordKey));
+    });
+    els.previewBody.querySelectorAll("tr[data-group-record-keys]").forEach(row => {
+      const keys = row.dataset.groupRecordKeys.split("\n").filter(Boolean);
+      row.classList.toggle("selected-row", keys.length > 0 && keys.every(key => selected.has(key)));
+      row.classList.toggle("partial-selected-row", keys.some(key => selected.has(key)) && !keys.every(key => selected.has(key)));
+    });
+    if (els.extractLtcFallbackBtn) {
+      els.extractLtcFallbackBtn.disabled = selected.size === 0;
+      els.extractLtcFallbackBtn.textContent = selected.size
+        ? `兜底识别选中项 (${selected.size})`
+        : "兜底识别选中项";
+    }
+  }
+
+  function toggleRecordSelection(record, event) {
+    if (!setSelectedRecordKeys || record._meta) return;
+    const key = recordKey(record);
+    const selected = new Set(getSelectedRecordKeys?.() ?? []);
+    const records = selectableRecords();
+    if (event.shiftKey && lastSelectedKey) {
+      const from = records.findIndex(item => recordKey(item) === lastSelectedKey);
+      const to = records.findIndex(item => recordKey(item) === key);
+      if (from >= 0 && to >= 0) {
+        selected.clear();
+        const [start, end] = from < to ? [from, to] : [to, from];
+        for (const item of records.slice(start, end + 1)) selected.add(recordKey(item));
+      } else {
+        selected.has(key) ? selected.delete(key) : selected.add(key);
+      }
+    } else if (event.metaKey || event.ctrlKey) {
+      selected.has(key) ? selected.delete(key) : selected.add(key);
+    } else {
+      selected.clear();
+      selected.add(key);
+    }
+    lastSelectedKey = key;
+    setSelectedRecordKeys(selected);
+    updateSelectionUi();
+  }
+
   function renderRows() {
     const records = getRecords();
     const previews = getPreviews();
@@ -58,6 +130,11 @@ export function createPreviewTableRenderer({
     const changedTimeReferences = getChangedTimeReferences();
     const combinedPolyKeys = getCombinedPolyKeys?.() ?? new Set();
     const activeOffset = getActiveOffset();
+    if (setSelectedRecordKeys) {
+      const liveKeys = new Set(records.map(recordKey));
+      const selected = new Set([...(getSelectedRecordKeys?.() ?? [])].filter(key => liveKeys.has(key)));
+      if (selected.size !== (getSelectedRecordKeys?.() ?? new Set()).size) setSelectedRecordKeys(selected);
+    }
 
     els.previewBody.textContent = "";
     const sampleRates = new Set();
@@ -72,6 +149,8 @@ export function createPreviewTableRenderer({
       if (isTrackGroup) {
         const groupRow = document.createElement("tr");
         groupRow.className = "group-row";
+        groupRow.dataset.groupRecordKeys = groupRecords.map(recordKey).join("\n");
+        groupRow.addEventListener("click", event => setGroupSelection(groupRecords, event));
         const td = document.createElement("td");
         td.colSpan = 15;
         const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
@@ -102,6 +181,8 @@ export function createPreviewTableRenderer({
         sampleRates.add(record.sampleRate);
         if (preview) sampleOffsets.add(preview.sampleOffset.toString());
         const row = document.createElement("tr");
+        row.dataset.recordKey = recordKey(record);
+        row.addEventListener("click", event => toggleRecordSelection(record, event));
         if (record._meta) row.classList.add("meta-record");
         if (record._video) row.classList.add("video-record");
         const cells = [
@@ -181,6 +262,7 @@ export function createPreviewTableRenderer({
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
     els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(canWriteLtcResult);
     els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;
+    updateSelectionUi();
   }
 
   return { renderRows };

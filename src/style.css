@@ -1029,6 +1029,23 @@ th {
 
 tbody tr:hover { background: #f8fbfb; }
 
+tbody tr[data-record-key],
+tbody tr[data-group-record-keys] {
+  cursor: pointer;
+}
+
+tbody tr.selected-row td {
+  background: #e7f4f2;
+}
+
+tbody tr.selected-row:hover td {
+  background: #dff0ed;
+}
+
+tbody tr.partial-selected-row td {
+  background: #f2f8f7;
+}
+
 .group-row td {
   background: #eef4f6;
   border-top: 1px solid var(--line);
@@ -1041,6 +1058,14 @@ tbody tr:hover { background: #f8fbfb; }
 
 .group-row:hover td {
   background: #eef4f6;
+}
+
+.group-row.selected-row td {
+  background: #dff0ed;
+}
+
+.group-row.partial-selected-row td {
+  background: #edf7f5;
 }
 
 .meta-record td:first-child {

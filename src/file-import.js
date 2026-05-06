@@ -99,6 +99,7 @@ export function createFileImportController({
     els.undoBtn.disabled = true;
     els.previewBtn.disabled = false;
     els.extractLtcBtn.disabled = ltcRecords.length === 0;
+    if (els.extractLtcFallbackBtn) els.extractLtcFallbackBtn.disabled = true;
     els.exportMetadataBtn.disabled = true;
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
     els.writeLtcBtn.disabled = true;

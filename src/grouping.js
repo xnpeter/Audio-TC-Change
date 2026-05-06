@@ -20,10 +20,22 @@ export function shortGroupLabel(key) {
   return parts[parts.length - 1] || key || "根目录";
 }
 
-export function hasZoomHNamePattern(record) {
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function hasSplitTrackNamePattern(record) {
   if (!record.parentPath) return false;
-  const parent = shortGroupLabel(record.parentPath);
-  return new RegExp(`^${parent}_Tr\\d+\\.wav$`, "i").test(record.name) || /(?:^|[_-])Tr\d+\.wav$/i.test(record.name);
+  const stem = (record.name || "").replace(/\.[^.]+$/, "");
+  const parent = escapeRegExp(shortGroupLabel(record.parentPath));
+  const parentPrefixed = new RegExp(`^${parent}(?:[_\\-\\s].+)?$`, "i").test(stem);
+  const trackSuffix = /(?:^|[_\-\s])(?:tr|trk|track|tk|ch|chan|channel)\s*(?:\d+(?:\s*[-_]\s*\d+)?|[lr](?:\s*[-_]\s*[lr])?)$/i;
+  const lrSuffix = /(?:^|[_\-\s])l\s*[-_ ]?\s*r$/i;
+  return trackSuffix.test(stem) || (parentPrefixed && lrSuffix.test(stem));
+}
+
+export function hasZoomHNamePattern(record) {
+  return hasSplitTrackNamePattern(record);
 }
 
 export function ltcScanPriority(record) {
@@ -62,11 +74,10 @@ export function detectTakeGroupKeys(recordList) {
     const durations = group.map(record => Number(record.durationSamples));
     const minDuration = Math.min(...durations);
     const maxDuration = Math.max(...durations);
-    const durationTolerance = Math.max(group[0].sampleRate * 2, maxDuration * 0.01);
-    const sameTakeDuration = maxDuration - minDuration <= durationTolerance;
-    const hasTrackNames = group.some(hasZoomHNamePattern);
+    const sameTakeDuration = maxDuration === minDuration;
+    const hasTrackNames = group.filter(hasSplitTrackNamePattern).length >= 2;
 
-    if (sameTakeDuration || hasTrackNames) keys.add(folder);
+    if (sameTakeDuration && hasTrackNames) keys.add(folder);
   }
   return keys;
 }

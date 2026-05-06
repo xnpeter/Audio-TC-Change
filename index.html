@@ -146,6 +146,7 @@
         <div class="ltc-tools-title">从音频/视频音轨提取时码（特别适配 ZOOM H 系列文件结构）</div>
         <div class="ltc-actions">
           <button id="extractLtcBtn" type="button" title="从 WAV 或视频音轨提取 LTC 时码" disabled>从音轨提取时码</button>
+          <button id="extractLtcFallbackBtn" type="button" title="选中少数疑难素材后启用软同步兜底，速度较慢，低质量结果需人工确认" disabled>兜底识别选中项</button>
           <button id="writeLtcBtn" class="danger" type="button" title="仅对 WAV/BWF 写入；视频文件只导出元数据" disabled>将LTC写入文件时码</button>
         </div>
       </div>
@@ -318,6 +319,7 @@
       applyBtn: document.getElementById("applyBtn"),
       undoBtn: document.getElementById("undoBtn"),
       extractLtcBtn: document.getElementById("extractLtcBtn"),
+      extractLtcFallbackBtn: document.getElementById("extractLtcFallbackBtn"),
       exportMetadataBtn: document.getElementById("exportMetadataBtn"),
       combinePolyBtn: document.getElementById("combinePolyBtn"),
       writeLtcBtn: document.getElementById("writeLtcBtn"),
@@ -383,6 +385,7 @@
     let ltcResults = new Map();
     let takeGroupKeys = new Set();
     let combinedPolyKeys = new Set();
+    let selectedRecordKeys = new Set();
     let changedTimeReferences = new Map();
 
     function groupKey(record) {
@@ -500,6 +503,8 @@
       getLtcResults: () => ltcResults,
       getChangedTimeReferences: () => changedTimeReferences,
       getCombinedPolyKeys: () => combinedPolyKeys,
+      getSelectedRecordKeys: () => selectedRecordKeys,
+      setSelectedRecordKeys: keys => { selectedRecordKeys = keys; },
       recordsByGroup,
       isTakeTrack,
       recordFps,
@@ -576,6 +581,10 @@
     els.applyBtn.addEventListener("click", () => guarded(timeReferenceWrite.applyChanges));
     els.undoBtn.addEventListener("click", () => guarded(timeReferenceWrite.undoLastWrite));
     els.extractLtcBtn.addEventListener("click", () => guarded(ltcController.extractLtcFromFiles));
+    els.extractLtcFallbackBtn.addEventListener("click", () => guarded(() => ltcController.extractLtcFromFiles({
+      allowSoftSync: true,
+      selectedRecordKeys,
+    })));
     els.exportMetadataBtn.addEventListener("click", () => guarded(metadataExport.exportMetadata));
     els.combinePolyBtn.addEventListener("click", () => guarded(polyCombine.combinePolyFiles));
     els.writeLtcBtn.addEventListener("click", () => guarded(timeReferenceWrite.writeLtcTimecode));
@@ -616,6 +625,7 @@
       clearAfterImportState: count => {
         lastUndoBatch = null;
         ltcResults = new Map();
+        selectedRecordKeys = new Set();
         if (count === 0) { changedTimeReferences = new Map(); combinedPolyKeys = new Set(); }
       },
       refreshTakeGroups,

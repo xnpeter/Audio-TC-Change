@@ -105,7 +105,7 @@ export function createLtcController({
         audioFormat: record.audioFormat,
         blockAlign: record.blockAlign,
       },
-      allowSoftSync: options.allowSoftSync !== false,
+      allowSoftSync: options.allowSoftSync === true,
     }, [buffer]);
     const revived = reviveWorkerLtcResult(result);
     if (revived) revived.scanSeconds = scanSeconds;
@@ -130,19 +130,34 @@ export function createLtcController({
     return auto;
   }
 
-  async function detectLtcAuto(record, fps) {
+  async function detectLtcFast(record, fps) {
+    if (!ltcWorkerPool) return null;
+    const fast = await detectLtcAutoWorker(record, fps, 5, { allowSoftSync: false });
+    return tagLtcAutoResult(fast, { fastScan: true });
+  }
+
+  async function detectLtcFull(record, fps, options = {}) {
+    const allowSoftSync = options.allowSoftSync === true;
+    if (!ltcWorkerPool) return decoder.detectAuto(record, fps, { allowSoftSync });
+    const full = await detectLtcAutoWorker(record, fps, null, { allowSoftSync });
+    return tagLtcAutoResult(full, {
+      fullFileScan: true,
+      manualFallback: allowSoftSync,
+    });
+  }
+
+  async function detectLtcAuto(record, fps, options = {}) {
+    const allowSoftSync = options.allowSoftSync === true;
     if (ltcWorkerPool) {
-      const fast = await detectLtcAutoWorker(record, fps, 5, { allowSoftSync: false });
+      const fast = await detectLtcFast(record, fps);
       if (isHighQualityFastLtc(fast)) {
-        return tagLtcAutoResult(fast, { fastScan: true });
+        return fast;
       }
-      const full = await detectLtcAutoWorker(record, fps, null);
-      return tagLtcAutoResult(full, {
-        fullFileScan: true,
+      return tagLtcAutoResult(await detectLtcFull(record, fps, options), {
         fastFallback: Boolean(fast?.best || fast?.rejectedChannels?.length),
       });
     }
-    return decoder.detectAuto(record, fps);
+    return decoder.detectAuto(record, fps, { allowSoftSync });
   }
 
   function shouldPromptForAutoFps(auto, currentValue) {
@@ -193,7 +208,7 @@ export function createLtcController({
     };
   }
 
-  async function detectLtcForTake(takeKey, groupRecords, fps, fpsValue, allowFpsPrompt) {
+  async function detectLtcForTake(takeKey, groupRecords, fps, fpsValue, allowFpsPrompt, options = {}) {
     const scanRecords = ltcScanRecords(groupRecords);
     const scanPasses = [
       scanRecords.filter(record => ltcScanPriority(record) === 0),
@@ -202,14 +217,54 @@ export function createLtcController({
     ].filter(pass => pass.length);
 
     let detectError = null;
-    for (const pass of scanPasses) {
-      const attempts = await Promise.all(pass.map(async record => {
+    if (ltcWorkerPool) {
+      const fastAttempts = [];
+      for (const record of scanRecords) {
         try {
-          return { record, auto: await detectLtcAuto(record, fps), error: null };
+          fastAttempts.push({ record, auto: await detectLtcFast(record, fps), error: null });
         } catch (error) {
-          return { record, auto: null, error };
+          fastAttempts.push({ record, auto: null, error });
         }
-      }));
+      }
+
+      const fastResult = bestTakeAttempt(fastAttempts, fpsValue, allowFpsPrompt);
+      if (fastResult.fpsMismatch) return { takeKey, groupRecords, ...fastResult };
+      if (fastResult.detected && decoder.isHighQualityCandidate(fastResult.detected)) {
+        return {
+          takeKey,
+          groupRecords,
+          detected: { ...fastResult.detected, groupKey: takeKey },
+          detectError,
+        };
+      }
+      if (fastResult.detectError) detectError = fastResult.detectError;
+    }
+
+    for (const pass of scanPasses) {
+      const attempts = [];
+      for (const record of pass) {
+        try {
+          attempts.push({
+            record,
+            auto: ltcWorkerPool
+              ? await detectLtcFull(record, fps, options)
+              : await detectLtcAuto(record, fps, options),
+            error: null,
+          });
+        } catch (error) {
+          attempts.push({ record, auto: null, error });
+        }
+        const partial = bestTakeAttempt(attempts, fpsValue, allowFpsPrompt);
+        if (partial.fpsMismatch) return { takeKey, groupRecords, ...partial };
+        if (partial.detected && decoder.isHighQualityCandidate(partial.detected)) {
+          return {
+            takeKey,
+            groupRecords,
+            detected: { ...partial.detected, groupKey: takeKey },
+            detectError,
+          };
+        }
+      }
       const result = bestTakeAttempt(attempts, fpsValue, allowFpsPrompt);
       if (result.fpsMismatch) return { takeKey, groupRecords, ...result };
       if (result.detectError) detectError = result.detectError;
@@ -224,30 +279,74 @@ export function createLtcController({
     return { takeKey, groupRecords, detected: null, detectError };
   }
 
-  async function extractLtcFromFiles() {
+  async function extractLtcFromFiles(options = {}) {
+    const selectedKeys = options.selectedRecordKeys;
     const records = getRecords();
     if (!records.length) throw new Error("请先拖入 WAV 或视频文件");
     let fpsValue = els.fpsInput.value;
     let allowFpsPrompt = true;
+    const allowSoftSync = options.allowSoftSync === true;
 
     while (true) {
       const fps = parseFps(fpsValue);
-      const groups = Array.from(recordsByGroup().entries());
+      const allGroups = Array.from(recordsByGroup().entries());
+      const groups = selectedKeys?.size
+        ? allGroups.filter(([, groupRecords]) => groupRecords.some(record => selectedKeys.has(recordKey(record))))
+        : allGroups;
+      if (!groups.length) throw new Error("没有找到可兜底识别的选中素材");
       let restartWithFps = null;
-      setLtcResults(new Map());
+      if (!selectedKeys?.size) setLtcResults(new Map());
       els.writeLtcBtn.disabled = true;
       setState("LTC检测中", "warn");
-      els.statusLine.textContent = "正在按文件/take 从音频波形读取 LTC...";
+      els.statusLine.textContent = allowSoftSync
+        ? "正在对选中素材启用兜底模式读取 LTC；低质量结果请人工确认..."
+        : "正在按文件/take 从音频波形读取 LTC...";
       updateWriteProgress("正在检测 LTC…", "", 0, groups.length);
       els.progressOverlay.classList.add("show");
 
       try {
+        const preflightResults = new Map();
+        if (allowFpsPrompt && !allowSoftSync && groups.length > 1) {
+          updateWriteProgress("正在确认 LTC 帧率…", shortGroupLabel(groups[0]?.[0] || "根目录"), 0, groups.length);
+          for (let i = 0; i < groups.length; i++) {
+            const [takeKey, groupRecords] = groups[i];
+            const probe = await detectLtcForTake(takeKey, groupRecords, fps, fpsValue, allowFpsPrompt, { allowSoftSync: false });
+            if (probe.fpsMismatch) {
+              els.progressOverlay.classList.remove("show");
+              const useAuto = await confirmLtcFpsMismatch({
+                currentValue: probe.fpsMismatch.currentValue,
+                detectedValue: probe.fpsMismatch.detectedValue,
+                detectedTimecode: probe.fpsMismatch.detectedTimecode,
+                group: groupLabel(probe.groupRecords[0]),
+              });
+              allowFpsPrompt = false;
+
+              if (useAuto) {
+                restartWithFps = probe.fpsMismatch.detectedValue;
+                setFpsValue(restartWithFps);
+                break;
+              }
+
+              els.progressOverlay.classList.add("show");
+              break;
+            }
+            preflightResults.set(takeKey, probe);
+            if (probe.detected) break;
+          }
+        }
+
+        if (restartWithFps) {
+          fpsValue = restartWithFps;
+          continue;
+        }
+
         const takeConcurrency = Math.max(2, Math.min(ltcWorkerPool?.workers.length || 2, 6));
         for (let i = 0; i < groups.length; i += takeConcurrency) {
           const batch = groups.slice(i, i + takeConcurrency);
           updateWriteProgress("正在检测 LTC…", shortGroupLabel(batch[0]?.[0] || "根目录"), i, groups.length);
           const batchResults = await Promise.all(batch.map(([takeKey, groupRecords]) =>
-            detectLtcForTake(takeKey, groupRecords, fps, fpsValue, allowFpsPrompt)
+            preflightResults.get(takeKey) ||
+            detectLtcForTake(takeKey, groupRecords, fps, fpsValue, allowFpsPrompt, { allowSoftSync })
           ));
 
           const mismatch = batchResults.find(result => result.fpsMismatch);

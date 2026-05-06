@@ -285,7 +285,10 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
       if (item === "119.88") selected.add("119.88df");
       if (item === "119.88df") selected.add("119.88");
     }
-    return values.filter(value => selected.has(value));
+    return ranked
+      .filter(item => selected.has(item.value))
+      .sort((a, b) => a.error - b.error)
+      .map(item => item.value);
   },
 
   findEdges(channel, expectedHalfBitSamples) {
@@ -415,24 +418,178 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     };
   },
 
+  softPhaseCandidates(channel, bitSamples) {
+    const phaseStep = 0.5;
+    const radius = Math.max(1, Math.floor(bitSamples * 0.08));
+    const phases = [];
+    const edgeStrength = pos => {
+      let before = 0;
+      let after = 0;
+      let weight = 0;
+      for (let offset = 1; offset <= radius; offset++) {
+        const left = Math.round(pos - offset);
+        const right = Math.round(pos + offset);
+        if (left >= 0 && right < channel.data.length) {
+          before += channel.data[left];
+          after += channel.data[right];
+          weight++;
+        }
+      }
+      return Math.abs(after / Math.max(1, weight) - before / Math.max(1, weight));
+    };
+
+    for (let phase = 0; phase < bitSamples; phase += phaseStep) {
+      let score = 0;
+      let count = 0;
+      const maxChecks = 1200;
+      const stride = Math.max(1, Math.floor((channel.data.length / bitSamples) / maxChecks));
+      for (let bit = 1; phase + bit * bitSamples < channel.data.length - radius; bit += stride) {
+        score += edgeStrength(phase + bit * bitSamples);
+        count++;
+      }
+      phases.push({ phase, score: score / Math.max(1, count) });
+    }
+
+    const selected = new Set();
+    for (const item of phases.sort((a, b) => b.score - a.score).slice(0, 24)) {
+      for (const offset of [-phaseStep, 0, phaseStep]) {
+        let phase = item.phase + offset;
+        while (phase < 0) phase += bitSamples;
+        while (phase >= bitSamples) phase -= bitSamples;
+        selected.add(Number(phase.toFixed(3)));
+      }
+    }
+    return [...selected].sort((a, b) => a - b);
+  },
+
+  softSyncMatch(bits, margins) {
+    let best = null;
+    for (const word of this.syncWords) {
+      let errors = 0;
+      let penalty = 0;
+      for (let i = 0; i < word.length; i++) {
+        const expected = word[i] === "1" ? 1 : 0;
+        if (bits[i] !== expected) {
+          errors++;
+          penalty += margins[i] || 0;
+        }
+      }
+      const score = errors * 0.65 + penalty;
+      if (!best || score < best.score) best = { errors, penalty, score };
+    }
+    if (!best) return null;
+    if (best.errors === 0) return { ...best, confidence: 1 };
+    if (best.errors <= 2 && best.penalty <= 1.25) {
+      return { ...best, confidence: Math.max(0, 1 - best.score / 4) };
+    }
+    return null;
+  },
+
+  softFrameAt(decoded, start, fps, reverse = false, strictDrop = true) {
+    if (start < 0 || start + 80 > decoded.bits.length) return null;
+    const bits = decoded.bits.slice(start, start + 80);
+    const margins = decoded.margins.slice(start, start + 80);
+    const candidateBits = reverse ? bits.slice().reverse() : bits;
+    const candidateMargins = reverse ? margins.slice().reverse() : margins;
+    const sync = this.softSyncMatch(candidateBits.slice(64, 80), candidateMargins.slice(64, 80));
+    if (!sync) return null;
+    const frame = this.parseFrame(candidateBits, fps) || this.softParseFrame(candidateBits, candidateMargins, fps);
+    if (!frame) return null;
+    if (strictDrop && frame.drop !== Boolean(fps.drop)) return null;
+    const bitMargin = candidateMargins.reduce((sum, value) => sum + value, 0) / Math.max(1, candidateMargins.length);
+    const digitConfidence = frame.softDigitCost == null ? 1 : Math.max(0, 1 - frame.softDigitCost / 2);
+    return {
+      ...frame,
+      bitStart: start,
+      sampleStart: decoded.bitStarts[start],
+      sampleEnd: decoded.bitEnds[start + 79],
+      reverse,
+      softSyncErrors: sync.errors,
+      softSyncPenalty: sync.penalty,
+      softBitMargin: bitMargin,
+      softFrameConfidence: Math.max(0, Math.min(1, bitMargin * 0.58 + sync.confidence * 0.27 + digitConfidence * 0.15)),
+    };
+  },
+
+  softBcdValue(bits, margins, onesIndexes, tensIndexes, maxValue) {
+    let best = null;
+    const costFor = (indexes, value) => {
+      let cost = 0;
+      let errors = 0;
+      for (let place = 0; place < indexes.length; place++) {
+        const expected = (value >> place) & 1;
+        const index = indexes[place];
+        if (bits[index] !== expected) {
+          cost += margins[index] || 0;
+          errors++;
+        }
+      }
+      return { cost, errors };
+    };
+    for (let value = 0; value <= maxValue; value++) {
+      const ones = value % 10;
+      const tens = Math.floor(value / 10);
+      const onesCost = costFor(onesIndexes, ones);
+      const tensCost = costFor(tensIndexes, tens);
+      const candidate = {
+        value,
+        cost: onesCost.cost + tensCost.cost,
+        errors: onesCost.errors + tensCost.errors,
+      };
+      if (!best || candidate.cost < best.cost) best = candidate;
+    }
+    return best;
+  },
+
+  softParseFrame(bits, margins, fps) {
+    const nominal = Number(nominalFpsFor(fps));
+    const ff = this.softBcdValue(bits, margins, [0, 1, 2, 3], [8, 9], nominal - 1);
+    const ss = this.softBcdValue(bits, margins, [16, 17, 18, 19], [24, 25, 26], 59);
+    const mm = this.softBcdValue(bits, margins, [32, 33, 34, 35], [40, 41, 42], 59);
+    const hh = this.softBcdValue(bits, margins, [48, 49, 50, 51], [56, 57], 23);
+    const dropCost = bits[10] === Boolean(fps.drop) ? { cost: 0, errors: 0 } : { cost: margins[10] || 0, errors: 1 };
+    const softDigitCost = ff.cost + ss.cost + mm.cost + hh.cost + dropCost.cost;
+    const softDigitErrors = ff.errors + ss.errors + mm.errors + hh.errors + dropCost.errors;
+    if (softDigitCost > 2 || softDigitErrors > 5) return null;
+    const sep = timecodeSeparator(fps);
+    const timecode = `${String(hh.value).padStart(2, "0")}:${String(mm.value).padStart(2, "0")}:${String(ss.value).padStart(2, "0")}${sep}${String(ff.value).padStart(frameDigitsFor(fps), "0")}`;
+    try {
+      return {
+        timecode,
+        frames: timecodeToFrames(timecode, fps),
+        drop: Boolean(fps.drop),
+        softDigitCost,
+        softDigitErrors,
+      };
+    } catch (error) {
+      return null;
+    }
+  },
+
   chooseSoftSyncCandidate(channel, record, fps, stats, expectedHalfBitSamples, strictDrop = true) {
     const bitSamples = expectedHalfBitSamples * 2;
-    const phaseStep = 0.5;
     const radius = Math.max(1, Math.floor(expectedHalfBitSamples * 0.35));
     const candidates = [];
     const absBigInt = value => value < 0n ? -value : value;
 
-    for (let phase = 0; phase < bitSamples; phase += phaseStep) {
+    for (const phase of this.softPhaseCandidates(channel, bitSamples)) {
       const decoded = this.decodeSoftGrid(channel, bitSamples, phase, radius);
+      const frames = [];
       for (let start = 0; start + 80 <= decoded.bits.length; start++) {
-        const frame = this.frameAt(decoded, start, fps, false, strictDrop);
+        const frame = this.softFrameAt(decoded, start, fps, false, strictDrop);
         if (!frame) continue;
         const sampleOffset = Math.max(0, Math.round(frame.sampleStart || 0));
         const newTimeReference = framesToSamples(frame.frames, record.sampleRate, fps) - BigInt(sampleOffset);
         if (newTimeReference < 0n) continue;
         const frameMargins = decoded.margins.slice(start, start + 80);
         const softMargin = frameMargins.reduce((sum, value) => sum + value, 0) / Math.max(1, frameMargins.length);
-        if (softMargin < 0.68) continue;
+        if (softMargin < 0.62) continue;
+        frames.push({
+          ...frame,
+          sampleOffset,
+          newTimeReference,
+          softMargin,
+        });
         candidates.push({
           ...frame,
           sampleOffset,
@@ -440,6 +597,39 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
           softMargin,
           measuredHalfBitSamples: expectedHalfBitSamples,
           halfBitError: 0.006,
+          rejectRatio: 0,
+          observedJitter: 0,
+        });
+      }
+
+      const frameByStart = new Map(frames.map(frame => [frame.bitStart, frame]));
+      for (const first of frames) {
+        const run = [first];
+        for (let offset = 1; offset < 6; offset++) {
+          const next = frameByStart.get(first.bitStart + offset * 80);
+          if (!next) break;
+          const expected = first.frames + BigInt(offset);
+          if (next.frames !== expected) break;
+          const expectedSample = first.sampleOffset + Math.round(offset * 80 * bitSamples);
+          if (Math.abs(next.sampleOffset - expectedSample) > Math.max(8, bitSamples * 0.75)) break;
+          run.push(next);
+        }
+        if (run.length < 2) continue;
+        const last = run[run.length - 1];
+        const sampleOffset = Math.max(0, Math.round(first.sampleStart || 0));
+        const newTimeReference = framesToSamples(first.frames, record.sampleRate, fps) - BigInt(sampleOffset);
+        if (newTimeReference < 0n) continue;
+        const softMargin = run.reduce((sum, frame) => sum + frame.softMargin, 0) / run.length;
+        const softFrameConfidence = run.reduce((sum, frame) => sum + frame.softFrameConfidence, 0) / run.length;
+        candidates.push({
+          ...first,
+          sampleOffset,
+          newTimeReference,
+          softMargin,
+          softFrameConfidence,
+          softRunFrames: run.length,
+          measuredHalfBitSamples: (last.sampleEnd - first.sampleStart) / Math.max(1, run.length * 80 * 2),
+          halfBitError: 0.0045,
           rejectRatio: 0,
           observedJitter: 0,
         });
@@ -452,17 +642,26 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
         item.timecode === candidate.timecode &&
         absBigInt(item.newTimeReference - candidate.newTimeReference) <= 4n
       );
-      if (cluster.length < 4) continue;
+      const runFrames = candidate.softRunFrames || 1;
+      if (runFrames < 2 && cluster.length < 4) continue;
       const clusterMargin = cluster.reduce((sum, item) => sum + item.softMargin, 0) / cluster.length;
-      if (clusterMargin < 0.72) continue;
-      const confidence = Math.max(0, Math.min(0.66, 0.46 + clusterMargin * 0.14 + Math.min(cluster.length, 12) * 0.008));
+      if (clusterMargin < (runFrames >= 2 ? 0.64 : 0.72)) continue;
+      const frameConfidence = cluster.reduce((sum, item) => sum + (item.softFrameConfidence || 0), 0) / cluster.length;
+      const confidence = Math.max(0, Math.min(0.76,
+        0.42 +
+        clusterMargin * 0.12 +
+        frameConfidence * 0.1 +
+        Math.min(cluster.length, 12) * 0.007 +
+        Math.min(runFrames, 4) * 0.035
+      ));
       const softCandidate = {
         ...candidate,
         confidence,
-        lockedFrames: 1,
+        lockedFrames: runFrames,
         softSync: true,
         softSyncSupport: cluster.length,
         softSyncMargin: clusterMargin,
+        softFrameConfidence: frameConfidence,
         diagnostics: {
           peak: stats.peak,
           rms: stats.rms,
@@ -475,6 +674,7 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
           rejectRatio: 0,
           softSyncSupport: cluster.length,
           softSyncMargin: clusterMargin,
+          softFrameConfidence: frameConfidence,
           windowStart: stats.windowStart || 0,
           windowEnd: stats.windowEnd || stats.data?.length || 0,
         },
@@ -483,8 +683,9 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
       softCandidate.qualityLabel = quality.label;
       softCandidate.qualityRank = quality.rank;
       if (!best ||
-        softCandidate.softSyncSupport > best.softSyncSupport ||
-        (softCandidate.softSyncSupport === best.softSyncSupport && softCandidate.softSyncMargin > best.softSyncMargin)) {
+        softCandidate.lockedFrames > best.lockedFrames ||
+        (softCandidate.lockedFrames === best.lockedFrames && softCandidate.softSyncSupport > best.softSyncSupport) ||
+        (softCandidate.lockedFrames === best.lockedFrames && softCandidate.softSyncSupport === best.softSyncSupport && softCandidate.softSyncMargin > best.softSyncMargin)) {
         best = softCandidate;
       }
     }
@@ -546,6 +747,7 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
   },
 
   qualityFor(candidate) {
+    if (candidate.softSync && candidate.lockedFrames < 4) return { label: "低", rank: 1 };
     if (candidate.confidence >= 0.82 && candidate.lockedFrames >= 6 && candidate.halfBitError <= 0.0025 && candidate.rejectRatio <= 0.08) {
       return { label: "高", rank: 3 };
     }
@@ -561,6 +763,10 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
       candidate.halfBitError <= 0.0025 &&
       candidate.rejectRatio <= 0.08 &&
       candidate.confidence >= 0.82;
+  },
+
+  isDefinitiveCandidate(candidate) {
+    return this.isHighQualityCandidate(candidate) && candidate.halfBitError <= 0.00025;
   },
 
   compareResults(a, b) {
@@ -646,7 +852,7 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     return this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples);
   },
 
-  detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples = null, strictDrop = true, allowSoftSync = true) {
+  detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples = null, strictDrop = true, allowSoftSync = false) {
     const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
     const halfBitSamples = expectedHalfBitSamples || record.sampleRate / (fpsValue * 80 * 2);
     let best = null;
@@ -669,7 +875,7 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
       }
     }
     if (!best && allowSoftSync) {
-      for (const variant of this.channelVariants(channel, record.sampleRate)) {
+      for (const variant of [{ ...channel, conditioned: false }]) {
         for (const window of this.channelWindows(variant, record.sampleRate)) {
           const candidate = this.chooseSoftSyncCandidate(window, record, fps, window, halfBitSamples, strictDrop);
           if (!candidate) continue;
@@ -702,8 +908,9 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     return candidateFpsValues();
   },
 
-  async detectAuto(record, preferredFps) {
+  async detectAuto(record, preferredFps, options = {}) {
     const preferredValue = preferredFps.value || defaultFpsValue();
+    const allowSoftSync = options.allowSoftSync === true;
     const values = [
       preferredValue,
       ...this.candidateFpsValues().filter(value => value !== preferredValue),
@@ -714,25 +921,31 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
     for (let channelIndex = 0; channelIndex < record.channels; channelIndex++) {
       const channel = await this.readChannel(record, channelIndex);
       const quick = this.quickRejectChannel(channel, record.sampleRate);
-      if (quick.reject) {
-        const conditionedQuick = this.quickRejectChannel(this.conditionLtcSignal(channel, record.sampleRate), record.sampleRate);
-        if (conditionedQuick.reject) {
-          rejectedChannels.push({
-            channelIndex,
-            channelLabel: `${channelIndex + 1}`,
-            rejectReason: quick.reason,
-          });
-          continue;
-        }
+      const strongHalfBitEstimate = quick.reject && quick.reason === "aperiodic"
+        ? this.estimateHalfBitSamples(channel, record.sampleRate)
+        : null;
+      const canDeepScan = strongHalfBitEstimate &&
+        strongHalfBitEstimate.count >= 3000 &&
+        strongHalfBitEstimate.jitter <= 0.08;
+      if (quick.reject &&
+        !canDeepScan &&
+        !(allowSoftSync && quick.reason !== "level" && quick.reason !== "window-level")) {
+        rejectedChannels.push({
+          channelIndex,
+          channelLabel: `${channelIndex + 1}`,
+          rejectReason: quick.reason,
+        });
+        continue;
       }
       const candidateValues = this.fpsCandidatesForChannel(channel, record.sampleRate, preferredValue, values);
       for (const value of candidateValues) {
         const fps = parseFps(value);
         const fpsValue = Number(fpsRate(fps).n) / Number(fpsRate(fps).d);
         const expectedHalfBitSamples = record.sampleRate / (fpsValue * 80 * 2);
-        let result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, true, value === preferredValue);
+        let result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, true, allowSoftSync && value === preferredValue);
         if (!result && value === preferredValue) {
-          result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, false, true);
+          const retrySoftSync = allowSoftSync && Boolean(fps.drop);
+          result = this.detectOnChannelData(record, channelIndex, fps, channel, expectedHalfBitSamples, false, retrySoftSync);
           if (result) result.dropMismatch = result.drop !== Boolean(fps.drop);
         }
         if (result) {
@@ -744,10 +957,10 @@ export function createLtcDecoder({ readDataView, candidateFpsValues, defaultFpsV
             preferred: value === preferredValue,
           };
           results.push(item);
-          if (value === preferredValue && this.isHighQualityCandidate(item)) {
+          if ((value === preferredValue && this.isHighQualityCandidate(item)) || this.isDefinitiveCandidate(item)) {
             return {
               best: item,
-              preferred: item,
+              preferred: item.fpsValue === preferredValue ? item : null,
               results,
               rejectedChannels,
             };
