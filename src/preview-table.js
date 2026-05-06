@@ -70,6 +70,8 @@ export function createPreviewTableRenderer({
         if (allSelected) selected.delete(key);
         else selected.add(key);
       }
+    } else if (allSelected) {
+      for (const key of keys) selected.delete(key);
     } else {
       selected.clear();
       for (const key of keys) selected.add(key);
@@ -92,9 +94,10 @@ export function createPreviewTableRenderer({
     if (els.extractLtcFallbackBtn) {
       els.extractLtcFallbackBtn.disabled = selected.size === 0;
       els.extractLtcFallbackBtn.textContent = selected.size
-        ? `兜底识别选中项 (${selected.size})`
-        : "兜底识别选中项";
+        ? `增强识别选中项 (${selected.size})`
+        : "增强识别选中项";
     }
+    if (els.removeSelectedBtn) els.removeSelectedBtn.disabled = selected.size === 0;
   }
 
   function toggleRecordSelection(record, event) {
@@ -114,6 +117,8 @@ export function createPreviewTableRenderer({
       }
     } else if (event.metaKey || event.ctrlKey) {
       selected.has(key) ? selected.delete(key) : selected.add(key);
+    } else if (selected.has(key)) {
+      selected.delete(key);
     } else {
       selected.clear();
       selected.add(key);
@@ -259,6 +264,7 @@ export function createPreviewTableRenderer({
     els.sampleRates.textContent = sampleRates.size ? Array.from(sampleRates).join(", ") : "-";
     els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
     els.extractLtcBtn.disabled = records.length === 0;
+    if (els.clearListBtn) els.clearListBtn.disabled = records.length === 0;
     els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
     els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(canWriteLtcResult);
     els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;

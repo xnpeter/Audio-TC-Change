@@ -259,13 +259,13 @@ h1 {
 
 .ltc-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .ltc-actions button {
   height: 38px;
-  min-width: 180px;
+  min-width: 0;
   justify-content: center;
   padding: 0 10px;
 }
@@ -960,8 +960,8 @@ main {
 
 .table-head {
   padding: 14px 16px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   border-bottom: 1px solid var(--line);
@@ -983,6 +983,19 @@ main {
   border-radius: 999px;
   color: var(--accent);
   background: var(--accent-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.table-actions button {
+  height: 30px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 750;
 }
@@ -1332,7 +1345,11 @@ tbody tr.partial-selected-row td {
   }
   .calc-actions { display: grid; grid-template-columns: 1fr; }
   button { width: 100%; justify-content: center; }
-  .table-head { align-items: flex-start; flex-direction: column; }
+  .table-head {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+  .table-actions { width: 100%; }
   .status { text-align: left; }
 }
 footer {

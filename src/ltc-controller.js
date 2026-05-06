@@ -293,7 +293,7 @@ export function createLtcController({
       const groups = selectedKeys?.size
         ? allGroups.filter(([, groupRecords]) => groupRecords.some(record => selectedKeys.has(recordKey(record))))
         : allGroups;
-      if (!groups.length) throw new Error("没有找到可兜底识别的选中素材");
+      if (!groups.length) throw new Error("没有找到可增强识别的选中素材");
       let restartWithFps = null;
       if (!selectedKeys?.size) setLtcResults(new Map());
       els.writeLtcBtn.disabled = true;

@@ -146,7 +146,7 @@
         <div class="ltc-tools-title">从音频/视频音轨提取时码（特别适配 ZOOM H 系列文件结构）</div>
         <div class="ltc-actions">
           <button id="extractLtcBtn" type="button" title="从 WAV 或视频音轨提取 LTC 时码" disabled>从音轨提取时码</button>
-          <button id="extractLtcFallbackBtn" type="button" title="选中少数疑难素材后启用软同步兜底，速度较慢，低质量结果需人工确认" disabled>兜底识别选中项</button>
+          <button id="extractLtcFallbackBtn" type="button" title="选中少数疑难素材后启用增强识别，速度较慢，低质量结果需人工确认" disabled>增强识别选中项</button>
           <button id="writeLtcBtn" class="danger" type="button" title="仅对 WAV/BWF 写入；视频文件只导出元数据" disabled>将LTC写入文件时码</button>
         </div>
       </div>
@@ -164,6 +164,10 @@
       <section class="workspace">
         <div class="table-head">
           <div class="table-title">文件信息 <span id="phasePill" class="phase">原始信息</span></div>
+          <div class="table-actions" aria-label="列表操作">
+            <button id="removeSelectedBtn" type="button" disabled>移除</button>
+            <button id="clearListBtn" type="button" disabled>清空列表</button>
+          </div>
           <div id="statusLine" class="status">拖入 WAV / MOV / MP4 / ALE / CSV 文件后显示原始信息</div>
         </div>
         <div class="table-wrap">
@@ -323,6 +327,8 @@
       exportMetadataBtn: document.getElementById("exportMetadataBtn"),
       combinePolyBtn: document.getElementById("combinePolyBtn"),
       writeLtcBtn: document.getElementById("writeLtcBtn"),
+      removeSelectedBtn: document.getElementById("removeSelectedBtn"),
+      clearListBtn: document.getElementById("clearListBtn"),
       fileCount: document.getElementById("fileCount"),
       offsetFrames: document.getElementById("offsetFrames"),
       offsetSamples: document.getElementById("offsetSamples"),
@@ -577,6 +583,60 @@
       renderRows();
     }
 
+    function resetListState() {
+      records = [];
+      previews = [];
+      activeOffset = null;
+      lastUndoBatch = null;
+      ltcResults = new Map();
+      takeGroupKeys = new Set();
+      combinedPolyKeys = new Set();
+      selectedRecordKeys = new Set();
+      changedTimeReferences = new Map();
+      directoryHandle = null;
+      els.applyBtn.disabled = true;
+      els.undoBtn.disabled = true;
+      els.previewBtn.disabled = true;
+      els.extractLtcBtn.disabled = true;
+      els.extractLtcFallbackBtn.disabled = true;
+      els.exportMetadataBtn.disabled = true;
+      els.combinePolyBtn.disabled = true;
+      els.writeLtcBtn.disabled = true;
+      setState("待机");
+      els.statusLine.textContent = "拖入 WAV / MOV / MP4 / ALE / CSV 文件后显示原始信息";
+      log("List cleared.");
+      renderRows();
+    }
+
+    function removeSelectedRecords() {
+      if (!selectedRecordKeys.size) return;
+      const removeKeys = new Set(selectedRecordKeys);
+      const before = records.length;
+      records = records.filter(record => !removeKeys.has(recordKey(record)));
+      previews = previews.filter(preview => !removeKeys.has(recordKey(preview)));
+      for (const key of removeKeys) {
+        ltcResults.delete(key);
+        changedTimeReferences.delete(key);
+        combinedPolyKeys.delete(key);
+      }
+      selectedRecordKeys = new Set();
+      activeOffset = previews.length ? activeOffset : null;
+      if (!records.length) {
+        resetListState();
+        return;
+      }
+      refreshTakeGroups();
+      els.applyBtn.disabled = previews.length === 0;
+      els.undoBtn.disabled = !lastUndoBatch;
+      els.previewBtn.disabled = false;
+      els.extractLtcBtn.disabled = records.filter(record => !record._meta).length === 0;
+      els.exportMetadataBtn.disabled = true;
+      setState("已移除");
+      els.statusLine.textContent = `已从列表移除 ${before - records.length} 项`;
+      log(`Removed ${before - records.length} selected item(s).`);
+      renderRows();
+    }
+
     els.previewBtn.addEventListener("click", () => guarded(timeReferenceWrite.runPreview));
     els.applyBtn.addEventListener("click", () => guarded(timeReferenceWrite.applyChanges));
     els.undoBtn.addEventListener("click", () => guarded(timeReferenceWrite.undoLastWrite));
@@ -588,6 +648,8 @@
     els.exportMetadataBtn.addEventListener("click", () => guarded(metadataExport.exportMetadata));
     els.combinePolyBtn.addEventListener("click", () => guarded(polyCombine.combinePolyFiles));
     els.writeLtcBtn.addEventListener("click", () => guarded(timeReferenceWrite.writeLtcTimecode));
+    els.removeSelectedBtn.addEventListener("click", () => guarded(removeSelectedRecords));
+    els.clearListBtn.addEventListener("click", () => guarded(resetListState));
     calculator.bindEvents({ guarded });
     offsetInput.bindEvents();
 
