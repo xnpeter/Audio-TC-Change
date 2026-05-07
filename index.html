@@ -143,16 +143,18 @@
       </div>
 
       <div class="ltc-tools" aria-label="extract timecode from audio waveform">
-        <div class="ltc-tools-title">从音频/视频音轨提取时码（特别适配 ZOOM H 系列文件结构）</div>
+        <div class="ltc-tools-title">
+          <span>从音频/视频音轨提取时码（特别适配 ZOOM H 系列文件结构）</span>
+          <label class="ltc-mute-option" title="勾选后，直接写入会静音源文件 LTC 轨；合并 Poly 会静音新 Poly 中对应的 LTC 轨">
+            <input id="muteLtcInput" type="checkbox" checked>
+            静音LTC轨
+          </label>
+        </div>
         <div class="ltc-actions">
           <button id="extractLtcBtn" type="button" title="从 WAV 或视频音轨提取 LTC 时码" disabled>从音轨提取时码</button>
           <button id="extractLtcFallbackBtn" type="button" title="选中少数疑难素材后启用增强识别，速度较慢，低质量结果需人工确认" disabled>增强识别选中项</button>
           <button id="writeLtcBtn" class="danger" type="button" title="仅对 WAV/BWF 写入；视频文件只导出元数据" disabled>将LTC写入文件时码</button>
         </div>
-        <label class="ltc-mute-option" title="勾选后，直接写入会静音源文件 LTC 轨；合并 Poly 会静音新 Poly 中对应的 LTC 轨">
-          <input id="muteLtcInput" type="checkbox" checked>
-          静音LTC轨
-        </label>
       </div>
     </section>
 

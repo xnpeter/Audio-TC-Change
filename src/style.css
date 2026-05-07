@@ -255,6 +255,10 @@ h1 {
   font-weight: 750;
   line-height: 1;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .ltc-actions {
@@ -271,10 +275,10 @@ h1 {
 }
 
 .ltc-mute-option {
-  min-height: 28px;
+  min-height: 18px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
