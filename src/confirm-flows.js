@@ -26,6 +26,8 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
     });
     const batchMode = groups.length > 1;
     const hasPreviewTimecode = Boolean(options.hasPreviewTimecode);
+    const hasLtcTimecode = Boolean(options.hasLtcTimecode);
+    const hasAlternateTimecode = hasLtcTimecode || hasPreviewTimecode;
     const chromeFolderWarning = [
       "由于 Chrome 的安全限制，",
       "<strong>请不要直接选择“下载”“文稿”“桌面”等受保护的常用文件夹。</strong>",
@@ -33,17 +35,20 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
     ].join("<br>");
     return showConfirmDialog({
       title: "合并为 Poly WAV？",
-      altText: hasPreviewTimecode ? "使用原始时码" : "",
+      altText: hasAlternateTimecode ? "使用原始时码" : "",
       altResult: "original",
-      confirmText: hasPreviewTimecode
-        ? "使用预览时码"
+      confirmText: hasLtcTimecode
+        ? "使用LTC时码"
+        : hasPreviewTimecode
+          ? "使用预览时码"
         : batchMode ? "选择输出文件夹" : "选择保存位置",
-      confirmResult: hasPreviewTimecode ? "preview" : true,
+      confirmResult: hasLtcTimecode ? "ltc" : hasPreviewTimecode ? "preview" : true,
       copy: [
         `将把 <strong>${groups.length}</strong> 个分轨 take 合并为 Poly WAV。`,
         trackCounts.slice(0, 6).join("<br>"),
         groups.length > 6 ? `还有 ${groups.length - 6} 个 take…` : "",
-        hasPreviewTimecode ? "<strong>检测到当前有未写入的时码修改预览。</strong>你可以只把预览后的起始时码写进新 Poly，源分轨不会被修改。" : "",
+        hasLtcTimecode ? "<strong>检测到当前有可用的 LTC 时码。</strong>你可以只把 LTC 起始时码写进新 Poly，源分轨不会被修改，也不会静音 LTC 声道。" : "",
+        !hasLtcTimecode && hasPreviewTimecode ? "<strong>检测到当前有未写入的时码修改预览。</strong>你可以只把预览后的起始时码写进新 Poly，源分轨不会被修改。" : "",
         batchMode ? "批量合并会让你选择一个输出文件夹；同名文件会被覆盖。" : "",
         batchMode ? chromeFolderWarning : "",
         "原始文件不会被修改。"

@@ -9,6 +9,7 @@ export function createPolyCombineController({
   combineEligibleGroups,
   confirmCombinePoly,
   getPreviews,
+  getLtcResults,
   groupLabel,
   getFpsValue,
   setCombinedPolyKeys,
@@ -23,6 +24,16 @@ export function createPolyCombineController({
     const groupKeys = new Set(groups.flatMap(([, groupRecords]) => groupRecords.map(record => recordKey(record))));
     const hasPreviewTimecode = previews.some(preview => groupKeys.has(recordKey(preview)) && preview.newTimeReference !== undefined);
     return { previewMap, hasPreviewTimecode };
+  }
+
+  function ltcMapForGroups(groups) {
+    const ltcResults = getLtcResults?.() || new Map();
+    const groupRecords = groups.flatMap(([, records]) => records);
+    const hasLtcTimecode = groupRecords.length > 0 && groupRecords.every(record => {
+      const ltc = ltcResults.get(recordKey(record));
+      return ltc?.ok && ltc.newTimeReference !== undefined && ltc.newTimeReference !== null;
+    });
+    return { ltcMap: ltcResults, hasLtcTimecode };
   }
 
   function recordsWithPreviewTimecode(groups, previewMap) {
@@ -41,6 +52,26 @@ export function createPolyCombineController({
       const first = nextRecords[0]?.oldTimeReference;
       if (!nextRecords.every(record => record.oldTimeReference === first)) {
         throw new Error(`${groupLabel(nextRecords[0])}: 同一 take 的预览后起始时码不一致，不能合成 Poly`);
+      }
+      return [key, nextRecords];
+    });
+  }
+
+  function recordsWithLtcTimecode(groups, ltcMap) {
+    return groups.map(([key, groupRecords]) => {
+      const nextRecords = groupRecords.map(record => {
+        const ltc = ltcMap.get(recordKey(record));
+        if (!ltc?.ok || ltc.newTimeReference === undefined || ltc.newTimeReference === null) {
+          throw new Error(`${groupLabel(record)}: 这个分轨没有可用的 LTC 时码，不能用 LTC 时码合成 Poly`);
+        }
+        return {
+          ...record,
+          oldTimeReference: ltc.newTimeReference,
+        };
+      });
+      const first = nextRecords[0]?.oldTimeReference;
+      if (!nextRecords.every(record => record.oldTimeReference === first)) {
+        throw new Error(`${groupLabel(nextRecords[0])}: 同一 take 的 LTC 起始时码不一致，不能合成 Poly`);
       }
       return [key, nextRecords];
     });
@@ -87,11 +118,14 @@ export function createPolyCombineController({
       throw new Error("当前浏览器不支持批量选择输出目录；请使用 Chrome / Edge，或逐个保存");
     }
     const { previewMap, hasPreviewTimecode } = previewMapForGroups(groups);
-    const choice = await confirmCombinePoly(groups, { hasPreviewTimecode });
+    const { ltcMap, hasLtcTimecode } = ltcMapForGroups(groups);
+    const choice = await confirmCombinePoly(groups, { hasPreviewTimecode, hasLtcTimecode });
     if (!choice) return;
     const groupsToWrite = choice === "preview"
       ? recordsWithPreviewTimecode(groups, previewMap)
-      : groups;
+      : choice === "ltc"
+        ? recordsWithLtcTimecode(groups, ltcMap)
+        : groups;
     let batchDirectory = null;
     if (groupsToWrite.length > 1) {
       try {
@@ -119,7 +153,7 @@ export function createPolyCombineController({
         results.push(result);
         updateWriteProgress("正在合并 Poly…", result.name, i + 1, groupsToWrite.length);
       }
-      const stateLabel = choice === "preview" ? "已更改并合并" : "已合并";
+      const stateLabel = choice === "preview" || choice === "ltc" ? "已更改并合并" : "已合并";
       setState(stateLabel);
       const allRecordKeys = new Set(
         groupsToWrite.flatMap(([, groupRecords]) => groupRecords.map(record => recordKey(record)))
@@ -127,7 +161,12 @@ export function createPolyCombineController({
       setCombinedPolyKeys(allRecordKeys);
       renderRows();
       els.statusLine.textContent = `Poly 合并完成：${results.length} 个文件`;
-      log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}${choice === "preview" ? "; used preview timecode" : ""}`);
+      const timecodeNote = choice === "preview"
+        ? "; used preview timecode"
+        : choice === "ltc"
+          ? "; used LTC timecode"
+          : "";
+      log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}${timecodeNote}`);
       els.toast.textContent = `✅ Poly 合并完成 — ${results.length} 个文件`;
       els.toast.classList.add("show");
       setTimeout(() => els.toast.classList.remove("show"), 4500);
