@@ -1,4 +1,5 @@
 import { LITTLE, readDataView } from "./wave.js";
+import { writeSilenceSample } from "./wave-audio.js";
 import { parseFps } from "./timecode.js";
 import {
   combineSortValue,
@@ -230,6 +231,7 @@ export async function writeChunk(writable, state, id, data) {
 
 export async function writeCombinedData(writable, state, plan, progressBase, progressTotal, onProgress = null) {
   const { first, tracks, bytesPerSample, blockAlign, durationSamples, dataSize } = plan;
+  const mutedSourceChannels = plan.mutedSourceChannels || new Set();
   await writable.write({ type: "write", position: state.position, data: chunkHeader("data", dataSize) });
   state.position += 8;
   const framesPerChunk = Math.max(1, Math.floor((4 * 1024 * 1024) / blockAlign));
@@ -248,13 +250,19 @@ export async function writeCombinedData(writable, state, plan, progressBase, pro
     }
 
     const out = new Uint8Array(framesThisChunk * blockAlign);
+    const outView = new DataView(out.buffer);
     for (let frame = 0; frame < framesThisChunk; frame++) {
       for (let outTrack = 0; outTrack < tracks.length; outTrack++) {
         const track = tracks[outTrack];
         const source = sourceBuffers.get(recordKey(track.record));
         const sourceOffset = frame * track.record.blockAlign + track.channelIndex * bytesPerSample;
         const destOffset = frame * blockAlign + outTrack * bytesPerSample;
-        out.set(source.subarray(sourceOffset, sourceOffset + bytesPerSample), destOffset);
+        const sourceChannelKey = `${recordKey(track.record)}:${track.channelIndex}`;
+        if (mutedSourceChannels.has(sourceChannelKey)) {
+          writeSilenceSample(outView, destOffset, first);
+        } else {
+          out.set(source.subarray(sourceOffset, sourceOffset + bytesPerSample), destOffset);
+        }
       }
     }
 
@@ -273,6 +281,7 @@ export async function writeCombinedPolyToWritable(key, groupRecords, writable, o
   const progressBase = options.progressBase ?? 0;
   const progressTotal = options.progressTotal ?? 1;
   const plan = validateCombineGroup(groupRecords, { groupLabel: options.groupLabel });
+  plan.mutedSourceChannels = options.mutedSourceChannels || new Set();
   const groupName = safeWaveBaseName(shortGroupLabel(key));
   const sourceInfo = combineSourceInfo(groupRecords, { fallbackFpsValue: options.fallbackFpsValue });
   const state = { position: 0 };

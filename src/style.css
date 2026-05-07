@@ -270,6 +270,18 @@ h1 {
   padding: 0 10px;
 }
 
+.ltc-mute-option {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  user-select: none;
+}
+
 .display-option {
   height: 46px;
   border: 1px solid var(--line);

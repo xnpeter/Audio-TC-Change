@@ -10,6 +10,7 @@ export function createPolyCombineController({
   confirmCombinePoly,
   getPreviews,
   getLtcResults,
+  shouldMuteLtc,
   groupLabel,
   getFpsValue,
   setCombinedPolyKeys,
@@ -77,7 +78,20 @@ export function createPolyCombineController({
     });
   }
 
-  async function writeCombinedPolyFile(key, groupRecords, progressBase = 0, progressTotal = 1) {
+  function mutedLtcChannelsForGroups(groups, ltcMap) {
+    const muted = new Set();
+    for (const [, groupRecords] of groups) {
+      for (const record of groupRecords) {
+        const ltc = ltcMap.get(recordKey(record));
+        if (ltc?.ok && ltc.sourceRecord && ltc.channelIndex !== undefined && ltc.channelIndex !== null) {
+          muted.add(`${recordKey(ltc.sourceRecord)}:${ltc.channelIndex}`);
+        }
+      }
+    }
+    return muted;
+  }
+
+  async function writeCombinedPolyFile(key, groupRecords, mutedSourceChannels, progressBase = 0, progressTotal = 1) {
     if (!("showSaveFilePicker" in window)) throw new Error("当前浏览器不支持直接保存 Poly WAV；请使用 Chrome / Edge");
     const groupName = safeWaveBaseName(shortGroupLabel(key));
     const handle = await window.showSaveFilePicker({
@@ -92,12 +106,13 @@ export function createPolyCombineController({
       progressBase,
       progressTotal,
       fallbackFpsValue: getFpsValue?.(),
+      mutedSourceChannels,
       groupLabel,
       onProgress: updateWriteProgress,
     });
   }
 
-  async function writeCombinedPolyToDirectory(directory, key, groupRecords, progressBase = 0, progressTotal = 1) {
+  async function writeCombinedPolyToDirectory(directory, key, groupRecords, mutedSourceChannels, progressBase = 0, progressTotal = 1) {
     const groupName = safeWaveBaseName(shortGroupLabel(key));
     const outputName = `${groupName}_Poly.WAV`;
     const handle = await directory.getFileHandle(outputName, { create: true });
@@ -106,6 +121,7 @@ export function createPolyCombineController({
       progressBase,
       progressTotal,
       fallbackFpsValue: getFpsValue?.(),
+      mutedSourceChannels,
       groupLabel,
       onProgress: updateWriteProgress,
     });
@@ -119,13 +135,15 @@ export function createPolyCombineController({
     }
     const { previewMap, hasPreviewTimecode } = previewMapForGroups(groups);
     const { ltcMap, hasLtcTimecode } = ltcMapForGroups(groups);
-    const choice = await confirmCombinePoly(groups, { hasPreviewTimecode, hasLtcTimecode });
+    const muteLtc = hasLtcTimecode && shouldMuteLtc?.() !== false;
+    const choice = await confirmCombinePoly(groups, { hasPreviewTimecode, hasLtcTimecode, muteLtc });
     if (!choice) return;
     const groupsToWrite = choice === "preview"
       ? recordsWithPreviewTimecode(groups, previewMap)
       : choice === "ltc"
         ? recordsWithLtcTimecode(groups, ltcMap)
         : groups;
+    const mutedSourceChannels = muteLtc ? mutedLtcChannelsForGroups(groups, ltcMap) : new Set();
     let batchDirectory = null;
     if (groupsToWrite.length > 1) {
       try {
@@ -148,8 +166,8 @@ export function createPolyCombineController({
         const [key, groupRecords] = groupsToWrite[i];
         updateWriteProgress("正在合并 Poly…", shortGroupLabel(key), i, groupsToWrite.length);
         const result = groupsToWrite.length > 1
-          ? await writeCombinedPolyToDirectory(batchDirectory, key, groupRecords, i, groupsToWrite.length)
-          : await writeCombinedPolyFile(key, groupRecords, i, groupsToWrite.length);
+          ? await writeCombinedPolyToDirectory(batchDirectory, key, groupRecords, mutedSourceChannels, i, groupsToWrite.length)
+          : await writeCombinedPolyFile(key, groupRecords, mutedSourceChannels, i, groupsToWrite.length);
         results.push(result);
         updateWriteProgress("正在合并 Poly…", result.name, i + 1, groupsToWrite.length);
       }
@@ -166,7 +184,8 @@ export function createPolyCombineController({
         : choice === "ltc"
           ? "; used LTC timecode"
           : "";
-      log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}${timecodeNote}`);
+      const muteNote = mutedSourceChannels.size ? "; muted LTC track" : "";
+      log(`Combine Poly OK: ${results.map(result => `${result.name} (${result.channels}ch)`).join(", ")}${timecodeNote}${muteNote}`);
       els.toast.textContent = `✅ Poly 合并完成 — ${results.length} 个文件`;
       els.toast.classList.add("show");
       setTimeout(() => els.toast.classList.remove("show"), 4500);

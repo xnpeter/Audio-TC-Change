@@ -30,6 +30,7 @@ export function createTimeReferenceWriteController({
   getLastUndoBatch,
   setLastUndoBatch,
   getLtcResults,
+  shouldMuteLtc,
   setChangedTimeReferences,
   refreshTakeGroups,
   offsetInput,
@@ -159,7 +160,8 @@ export function createTimeReferenceWriteController({
       .filter(item => item.ltc?.ok && !item.record._meta && !item.record._video && item.record.fileHandle?.createWritable);
     if (!writableItems.length) throw new Error("没有可写入的 LTC 识别结果");
 
-    const ok = await confirmWriteChanges(writableItems.length, true);
+    const muteLtc = shouldMuteLtc?.() !== false;
+    const ok = await confirmWriteChanges(writableItems.length, muteLtc);
     if (!ok) return;
 
     setState("LTC写入中", "warn");
@@ -188,7 +190,7 @@ export function createTimeReferenceWriteController({
         const isSource = recordKey(record) === recordKey(ltc.sourceRecord);
         updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
         await writeTimeReference(record, ltc.newTimeReference);
-        if (isSource) {
+        if (isSource && muteLtc) {
           const freshForMute = await scanWave(record.fileHandle, {
             relativePath: record.relativePath,
             parentPath: record.parentPath,
@@ -204,7 +206,9 @@ export function createTimeReferenceWriteController({
         ltc.ok = false;
         ltc.status = "ok";
         ltc.statusText = isSource
-          ? `已写入；第 ${ltc.channelLabel} 轨已静音`
+          ? muteLtc
+            ? `已写入；第 ${ltc.channelLabel} 轨已静音`
+            : `已写入；第 ${ltc.channelLabel} 轨未静音`
           : `已写入；LTC来自 ${ltc.sourceRecord.name}`;
         updateWriteProgress("正在写入 LTC…", record.name, i + 1, writableItems.length);
       }

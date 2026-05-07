@@ -149,6 +149,10 @@
           <button id="extractLtcFallbackBtn" type="button" title="选中少数疑难素材后启用增强识别，速度较慢，低质量结果需人工确认" disabled>增强识别选中项</button>
           <button id="writeLtcBtn" class="danger" type="button" title="仅对 WAV/BWF 写入；视频文件只导出元数据" disabled>将LTC写入文件时码</button>
         </div>
+        <label class="ltc-mute-option" title="勾选后，直接写入会静音源文件 LTC 轨；合并 Poly 会静音新 Poly 中对应的 LTC 轨">
+          <input id="muteLtcInput" type="checkbox" checked>
+          静音LTC轨
+        </label>
       </div>
     </section>
 
@@ -327,6 +331,7 @@
       exportMetadataBtn: document.getElementById("exportMetadataBtn"),
       combinePolyBtn: document.getElementById("combinePolyBtn"),
       writeLtcBtn: document.getElementById("writeLtcBtn"),
+      muteLtcInput: document.getElementById("muteLtcInput"),
       removeSelectedBtn: document.getElementById("removeSelectedBtn"),
       clearListBtn: document.getElementById("clearListBtn"),
       fileCount: document.getElementById("fileCount"),
@@ -534,6 +539,7 @@
       confirmCombinePoly,
       getPreviews: () => previews,
       getLtcResults: () => ltcResults,
+      shouldMuteLtc: () => els.muteLtcInput.checked,
       groupLabel,
       getFpsValue: () => els.fpsInput.value,
       setCombinedPolyKeys: keys => { combinedPolyKeys = keys; },
@@ -555,6 +561,7 @@
       getLastUndoBatch: () => lastUndoBatch,
       setLastUndoBatch: next => { lastUndoBatch = next; },
       getLtcResults: () => ltcResults,
+      shouldMuteLtc: () => els.muteLtcInput.checked,
       setChangedTimeReferences: next => { changedTimeReferences = next; },
       refreshTakeGroups,
       offsetInput,
