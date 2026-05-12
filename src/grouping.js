@@ -38,6 +38,50 @@ export function hasZoomHNamePattern(record) {
   return hasSplitTrackNamePattern(record);
 }
 
+function durationRange(group) {
+  const durations = group.map(record => BigInt(record.durationSamples));
+  return {
+    min: durations.reduce((min, value) => value < min ? value : min, durations[0]),
+    max: durations.reduce((max, value) => value > max ? value : max, durations[0]),
+  };
+}
+
+function takeDurationTolerance(group) {
+  const sampleRate = group.find(record => Number.isFinite(record.sampleRate) && record.sampleRate > 0)?.sampleRate || 1;
+  return BigInt(Math.ceil(sampleRate));
+}
+
+function hasCompatibleTakeDuration(group) {
+  if (!group.length) return false;
+  const { min, max } = durationRange(group);
+  return max - min <= takeDurationTolerance(group);
+}
+
+function hasExactSameDuration(group) {
+  if (!group.length) return false;
+  const { min, max } = durationRange(group);
+  return max === min;
+}
+
+function splitTrackStem(record) {
+  const stem = (record.name || "").replace(/\.[^.]+$/, "");
+  const trackMatch = stem.match(/^(.*?)(?:[_\-\s])(?:tr|trk|track|tk|ch|chan|channel)\s*(?:\d+(?:\s*[-_]\s*\d+)?|[lr](?:\s*[-_]\s*[lr])?)$/i);
+  if (trackMatch?.[1]) return trackMatch[1].trim().toLowerCase();
+  const lrMatch = stem.match(/^(.*?)(?:[_\-\s])l\s*[-_ ]?\s*r$/i);
+  if (lrMatch?.[1]) return lrMatch[1].trim().toLowerCase();
+  return "";
+}
+
+function hasStrongSplitTrackSet(group) {
+  const stems = new Map();
+  for (const record of group) {
+    const stem = splitTrackStem(record);
+    if (!stem) continue;
+    stems.set(stem, (stems.get(stem) || 0) + 1);
+  }
+  return Array.from(stems.values()).some(count => count >= 2);
+}
+
 export function ltcScanPriority(record) {
   const name = record.name || "";
   if (record.channels === 1 && hasZoomHNamePattern(record)) return 0;
@@ -71,13 +115,9 @@ export function detectTakeGroupKeys(recordList) {
     const formats = new Set(group.map(record => record.audioFormat));
     if (sampleRates.size !== 1 || bits.size !== 1 || formats.size !== 1) continue;
 
-    const durations = group.map(record => Number(record.durationSamples));
-    const minDuration = Math.min(...durations);
-    const maxDuration = Math.max(...durations);
-    const sameTakeDuration = maxDuration === minDuration;
     const hasTrackNames = group.filter(hasSplitTrackNamePattern).length >= 2;
 
-    if (sameTakeDuration && hasTrackNames) keys.add(folder);
+    if (hasTrackNames && (hasCompatibleTakeDuration(group) || hasStrongSplitTrackSet(group))) keys.add(folder);
   }
   return keys;
 }
@@ -125,5 +165,6 @@ export function recordsByGroupFor(recordList, takeGroupKeys) {
 export function combineEligibleGroupsFor(recordList, takeGroupKeys) {
   return Array.from(recordsByGroupFor(recordList, takeGroupKeys).entries())
     .filter(([, groupRecords]) => groupRecords.length > 1 && groupRecords.every(record => isTakeTrackFor(record, takeGroupKeys)))
+    .filter(([, groupRecords]) => hasExactSameDuration(groupRecords))
     .filter(([, groupRecords]) => groupRecords.some(record => record.channels > 1) || groupRecords.some(record => record.channels === 1));
 }
