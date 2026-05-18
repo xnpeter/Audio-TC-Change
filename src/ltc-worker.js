@@ -48,6 +48,11 @@ export const LTC_WORKER_CODE = `
   function framesToSamples(frames, sampleRate, fps) {
     return roundFrac(mulFrac(divFrac(frac(frames), fpsRate(fps)), frac(BigInt(sampleRate))));
   }
+  function normalizeTimeReference(value, sampleRate) {
+    const daySamples = BigInt(sampleRate) * 86400n;
+    if (daySamples <= 0n) throw new Error("invalid sample rate");
+    return ((value % daySamples) + daySamples) % daySamples;
+  }
   function frameDigitsFor(fps) { return fps.nominal >= 100n ? 3 : 2; }
   function timecodeSeparator(fps) { return fps.drop ? ";" : ":"; }
   function readAudioSample(view, offset, record) {
@@ -460,8 +465,7 @@ export const LTC_WORKER_CODE = `
           const frame = this.softFrameAt(decoded, start, fps, false, strictDrop);
           if (!frame) continue;
           const sampleOffset = Math.max(0, Math.round(frame.sampleStart || 0));
-          const newTimeReference = framesToSamples(frame.frames, record.sampleRate, fps) - BigInt(sampleOffset);
-          if (newTimeReference < 0n) continue;
+          const newTimeReference = normalizeTimeReference(framesToSamples(frame.frames, record.sampleRate, fps) - BigInt(sampleOffset), record.sampleRate);
           const frameMargins = decoded.margins.slice(start, start + 80);
           const softMargin = frameMargins.reduce((sum, value) => sum + value, 0) / Math.max(1, frameMargins.length);
           if (softMargin < 0.62) continue;
@@ -483,8 +487,7 @@ export const LTC_WORKER_CODE = `
           if (run.length < 2) continue;
           const last = run[run.length - 1];
           const sampleOffset = Math.max(0, Math.round(first.sampleStart || 0));
-          const newTimeReference = framesToSamples(first.frames, record.sampleRate, fps) - BigInt(sampleOffset);
-          if (newTimeReference < 0n) continue;
+          const newTimeReference = normalizeTimeReference(framesToSamples(first.frames, record.sampleRate, fps) - BigInt(sampleOffset), record.sampleRate);
           const softMargin = run.reduce((sum, frame) => sum + frame.softMargin, 0) / run.length;
           const softFrameConfidence = run.reduce((sum, frame) => sum + frame.softFrameConfidence, 0) / run.length;
           candidates.push({ ...first, sampleOffset, newTimeReference, softMargin, softFrameConfidence, softRunFrames: run.length, measuredHalfBitSamples: (last.sampleEnd - first.sampleStart) / Math.max(1, run.length * 80 * 2), halfBitError: 0.0045, rejectRatio: 0, observedJitter: 0 });
@@ -567,8 +570,7 @@ export const LTC_WORKER_CODE = `
           if (run.length < 2) continue;
           const first = run[0], last = run[run.length - 1];
           const sampleOffset = Math.max(0, Math.round(first.sampleStart || 0));
-          const newTimeReference = framesToSamples(first.frames, record.sampleRate, fps) - BigInt(sampleOffset);
-          if (newTimeReference < 0n) continue;
+          const newTimeReference = normalizeTimeReference(framesToSamples(first.frames, record.sampleRate, fps) - BigInt(sampleOffset), record.sampleRate);
           const measuredHalfBitSamples = (last.sampleEnd - first.sampleStart) / Math.max(1, run.length * 80 * 2);
           const halfBitError = Math.abs(measuredHalfBitSamples - expectedHalfBitSamples) / expectedHalfBitSamples;
           const rejectRatio = decoded.rejected / Math.max(1, decoded.rejected + decoded.bits.length);

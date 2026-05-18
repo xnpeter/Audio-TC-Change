@@ -1,5 +1,6 @@
 import {
   fpsLabel,
+  normalizeTimeReference,
   parseFps,
   samplesForRate,
 } from "./timecode.js";
@@ -80,10 +81,7 @@ export function createTimeReferenceWriteController({
       const offset = offsetInput.parseOffset(els.offsetInput.value, fps);
       if (!firstOffset) firstOffset = offset;
       const sampleOffset = samplesForRate(offset, record.sampleRate);
-      const newTimeReference = record.oldTimeReference + sampleOffset;
-      if (newTimeReference < 0n) {
-        throw new Error(`${recordLabel(record)}: 减去该偏移后 TimeReference 会小于 0`);
-      }
+      const newTimeReference = normalizeTimeReference(record.oldTimeReference + sampleOffset, record.sampleRate);
       const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps);
       const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps);
       const oldEndTc = samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps);

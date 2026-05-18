@@ -216,6 +216,18 @@ export function samplesForRate(offset, sampleRate) {
 }
 
 
+export function timeReferenceDaySamples(sampleRate) {
+  return BigInt(sampleRate) * 86400n;
+}
+
+
+export function normalizeTimeReference(value, sampleRate) {
+  const daySamples = timeReferenceDaySamples(sampleRate);
+  if (daySamples <= 0n) throw new Error("采样率无效，无法归一化 TimeReference");
+  return ((value % daySamples) + daySamples) % daySamples;
+}
+
+
 export function samplesToTimecode(samples, sampleRate, fps, options = {}) {
   const precise = options.precise ?? true;
   const totalFrames = mulFrac(frac(samples, BigInt(sampleRate)), fpsRate(fps));
