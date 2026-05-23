@@ -82,10 +82,10 @@ export function createTimeReferenceWriteController({
       if (!firstOffset) firstOffset = offset;
       const sampleOffset = samplesForRate(offset, record.sampleRate);
       const newTimeReference = normalizeTimeReference(record.oldTimeReference + sampleOffset, record.sampleRate);
-      const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps);
-      const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps);
-      const oldEndTc = samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps);
-      const newEndTc = samplesToTimecode(newTimeReference + record.durationSamples, record.sampleRate, fps);
+      const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps, { wrapDay: true });
+      const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps, { wrapDay: true });
+      const oldEndTc = samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate, fps, { wrapDay: true });
+      const newEndTc = samplesToTimecode(newTimeReference + record.durationSamples, record.sampleRate, fps, { wrapDay: true });
       nextPreviews.push({
         ...record,
         offset,

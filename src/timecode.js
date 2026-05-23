@@ -209,6 +209,13 @@ export function framesToTimecode(frames, fps) {
 }
 
 
+function timecodeDayFrames(fps) {
+  const nominal = nominalFpsFor(fps);
+  const dropFrames = dropFramesFor(fps);
+  return nominal * 86400n - dropFrames * (1440n - 144n);
+}
+
+
 export function samplesForRate(offset, sampleRate) {
   const samples = mulFrac(offset.seconds, frac(BigInt(sampleRate)));
   if (samples.d !== 1n) throw new Error(`${sampleRate} Hz 下偏移不是整数采样：${samples.n}/${samples.d}`);
@@ -230,9 +237,17 @@ export function normalizeTimeReference(value, sampleRate) {
 
 export function samplesToTimecode(samples, sampleRate, fps, options = {}) {
   const precise = options.precise ?? true;
-  const totalFrames = mulFrac(frac(samples, BigInt(sampleRate)), fpsRate(fps));
-  const whole = precise ? floorFrac(totalFrames) : roundFrac(totalFrames);
-  const sub = frac(totalFrames.n - whole * totalFrames.d, totalFrames.d);
+  const displaySamples = options.wrapDay
+    ? normalizeTimeReference(samples, sampleRate)
+    : samples;
+  const totalFrames = mulFrac(frac(displaySamples, BigInt(sampleRate)), fpsRate(fps));
+  const rawWhole = precise ? floorFrac(totalFrames) : roundFrac(totalFrames);
+  let whole = rawWhole;
+  if (options.wrapDay) {
+    const dayFrames = timecodeDayFrames(fps);
+    whole = ((whole % dayFrames) + dayFrames) % dayFrames;
+  }
+  const sub = frac(totalFrames.n - rawWhole * totalFrames.d, totalFrames.d);
   const base = framesToTimecode(whole, fps);
   return precise && sub.n !== 0n ? `${base} + ${sub.n}/${sub.d}fr` : base;
 }

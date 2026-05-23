@@ -45,7 +45,7 @@ export function createLtcController({
 
   function ltcStartTimecode(result, record) {
     if (result?.newTimeReference == null || !record) return result?.timecode || "";
-    return samplesToTimecode(result.newTimeReference, record.sampleRate, result.fps || defaultDisplayFps());
+    return samplesToTimecode(result.newTimeReference, record.sampleRate, result.fps || defaultDisplayFps(), { wrapDay: true });
   }
 
   function ltcStatusText(result, record, fps) {
@@ -375,7 +375,7 @@ export function createLtcController({
           for (const { groupRecords, detected, detectError } of batchResults) {
             if (detected) {
               for (const record of groupRecords) {
-                const startTimecode = samplesToTimecode(detected.newTimeReference, record.sampleRate, detected.fps || fps);
+                const startTimecode = samplesToTimecode(detected.newTimeReference, record.sampleRate, detected.fps || fps, { wrapDay: true });
                 const result = {
                   ...detected,
                   record,
@@ -388,7 +388,7 @@ export function createLtcController({
                 ltcResults.set(recordKey(record), result);
               }
               const dropNote = detected.dropMismatch ? " · DF标记与当前设置不符" : "";
-              const logStartTc = samplesToTimecode(detected.newTimeReference, groupRecords[0].sampleRate, detected.fps || fps);
+              const logStartTc = samplesToTimecode(detected.newTimeReference, groupRecords[0].sampleRate, detected.fps || fps, { wrapDay: true });
               const scanMode = detected.fastScan ? "fast" : detected.fullFileScan ? "full-file" : "full";
               log(`LTC OK: ${groupLabel(groupRecords[0])} -> start ${logStartTc}, source frame ${detected.timecode} @ ${detected.sampleOffset} samples, ${detected.fpsLabel || fpsLabel(fps)}${dropNote}, source ${detected.sourceRecord.name}, ${detected.lockedFrames} frames, ${scanMode}, quality ${detected.qualityLabel}, half error ${(detected.halfBitError * 100).toFixed(3)}%, confidence ${Math.round(detected.confidence * 100)}%`);
             } else {

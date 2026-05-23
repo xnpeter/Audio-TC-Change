@@ -37,7 +37,7 @@ export function resolveMetadataCsv(items, options) {
   const rows = items.map(({ record, newTimeReference, fps, fpsValue, description }) => {
     const start = newTimeReference;
     const end = start + record.durationSamples;
-    const startTc = samplesToTimecode(start, record.sampleRate, fps, { precise: false });
+    const startTc = samplesToTimecode(start, record.sampleRate, fps, { precise: false, wrapDay: true });
     return {
       "File Name": record.name,
       "Clip Directory": record.parentPath || "",
@@ -48,7 +48,7 @@ export function resolveMetadataCsv(items, options) {
       "Audio Codec": audioCodecLabel(record),
       "Description": `${description} -> ${startTc}`,
       "Start TC": startTc,
-      "End TC": samplesToTimecode(end, record.sampleRate, fps, { precise: false }),
+      "End TC": samplesToTimecode(end, record.sampleRate, fps, { precise: false, wrapDay: true }),
       "Audio Bit Depth": record.bitsPerSample,
     };
   });
@@ -73,8 +73,8 @@ export function aleMetadataText(items, defaultFpsValue, options) {
     const end = start + record.durationSamples;
     return [
       record.name,
-      samplesToTimecode(start, record.sampleRate, fps, { precise: false }),
-      samplesToTimecode(end, record.sampleRate, fps, { precise: false }),
+      samplesToTimecode(start, record.sampleRate, fps, { precise: false, wrapDay: true }),
+      samplesToTimecode(end, record.sampleRate, fps, { precise: false, wrapDay: true }),
       samplesToTimecode(record.durationSamples, record.sampleRate, fps, { precise: false }),
       aleTracksLabel(record),
       aleFpsLabel(fpsValue),
@@ -126,8 +126,8 @@ export function resolveFullMetadataCsv(items, options) {
     const sr = record.sampleRate || "";
     const ch = record.channels || "";
     const bps = record.bitsPerSample || "";
-    const startTc = samplesToTimecode(start, record.sampleRate || 48000, fps, { precise: false });
-    const endTc = samplesToTimecode(end, record.sampleRate || 48000, fps, { precise: false });
+    const startTc = samplesToTimecode(start, record.sampleRate || 48000, fps, { precise: false, wrapDay: true });
+    const endTc = samplesToTimecode(end, record.sampleRate || 48000, fps, { precise: false, wrapDay: true });
     const durationTc = samplesToTimecode(record.durationSamples, record.sampleRate || 48000, fps, { precise: false });
     return {
       "File Name": record.name,
@@ -172,8 +172,8 @@ export function resolveFullAleText(items, defaultFpsValue, options) {
     const sr = record.sampleRate || "";
     const ch = record.channels || "";
     const bps = record.bitsPerSample || "";
-    const startTc = samplesToTimecode(start, record.sampleRate || 48000, fps, { precise: false });
-    const endTc = samplesToTimecode(end, record.sampleRate || 48000, fps, { precise: false });
+    const startTc = samplesToTimecode(start, record.sampleRate || 48000, fps, { precise: false, wrapDay: true });
+    const endTc = samplesToTimecode(end, record.sampleRate || 48000, fps, { precise: false, wrapDay: true });
     const durationTc = samplesToTimecode(record.durationSamples, record.sampleRate || 48000, fps, { precise: false });
     return [
       record.name,
@@ -241,10 +241,10 @@ export function manifestCsv(previews, options) {
     old_time_reference: p.oldTimeReference,
     new_time_reference: p.newTimeReference,
     duration_samples: p.durationSamples,
-    old_start_tc: samplesToTimecode(p.oldTimeReference, p.sampleRate, p.fps || recordFps(p)),
-    new_start_tc: samplesToTimecode(p.newTimeReference, p.sampleRate, p.fps || recordFps(p)),
-    old_end_tc: samplesToTimecode(p.oldTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p)),
-    new_end_tc: samplesToTimecode(p.newTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p)),
+    old_start_tc: samplesToTimecode(p.oldTimeReference, p.sampleRate, p.fps || recordFps(p), { wrapDay: true }),
+    new_start_tc: samplesToTimecode(p.newTimeReference, p.sampleRate, p.fps || recordFps(p), { wrapDay: true }),
+    old_end_tc: samplesToTimecode(p.oldTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p), { wrapDay: true }),
+    new_end_tc: samplesToTimecode(p.newTimeReference + p.durationSamples, p.sampleRate, p.fps || recordFps(p), { wrapDay: true }),
   }));
   return [headers.join(","), ...rows.map(row => headers.map(h => toCsvValue(row[h])).join(","))].join("\n");
 }
