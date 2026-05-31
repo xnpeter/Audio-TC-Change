@@ -235,7 +235,7 @@ function parseStsd(view, box) {
       entry.codec = codecLabel(type, compressorName);
     } else if (AUDIO_SAMPLE_TYPES.has(type)) {
       entry.codec = codecLabel(type);
-    } else if (type === "tmcd" && pos + 36 <= box.end) {
+    } else if (type === "tmcd" && pos + 33 <= pos + size) {
       const flags = view.getUint32(pos + 20);
       const timeScale = view.getUint32(pos + 24);
       const frameDuration = view.getUint32(pos + 28);
@@ -246,7 +246,7 @@ function parseStsd(view, box) {
         timeScale,
         frameDuration,
         numFrames,
-        reelName: parseNameAtom(view, pos + 36, pos + size),
+        reelName: pos + 36 <= pos + size ? parseNameAtom(view, pos + 36, pos + size) : "",
       };
     }
 

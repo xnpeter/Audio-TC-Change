@@ -628,9 +628,7 @@ export const LTC_WORKER_CODE = `
         const canDeepScan = strongHalfBitEstimate &&
           strongHalfBitEstimate.count >= 3000 &&
           strongHalfBitEstimate.jitter <= 0.08;
-        if (quick.reject &&
-          !canDeepScan &&
-          !(allowSoftSync && quick.reason !== "level" && quick.reason !== "window-level")) {
+        if (quick.reject && !canDeepScan && !allowSoftSync) {
           rejectedChannels.push({ channelIndex, channelLabel: String(channelIndex + 1), rejectReason: quick.reason });
           continue;
         }
