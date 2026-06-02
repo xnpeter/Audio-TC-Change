@@ -69,10 +69,10 @@ async function decodeVideoAudio(file) {
   }
 }
 
-function audioTrackFromMetadata(containerMeta) {
-  return (containerMeta.tracks || []).find(track =>
+function audioTracksFromMetadata(containerMeta) {
+  return (containerMeta.tracks || []).filter(track =>
     track.handlerType === "soun" && MOV_PCM_SAMPLE_TYPES.has(track.sampleType)
-  ) || null;
+  );
 }
 
 function chunkSampleEntry(stsc, chunkIndex) {
@@ -102,9 +102,7 @@ function readPcmSample(view, offset, bytesPerSample, bitsPerSample, littleEndian
   throw new Error(`不支持 ${bitsPerSample} bit MOV PCM 音轨`);
 }
 
-async function decodeMovPcmAudio(file, containerMeta) {
-  const track = audioTrackFromMetadata(containerMeta);
-  if (!track) throw new Error(`${file.name}: 未检测到可直接解析的 MOV PCM 音轨`);
+async function decodeMovPcmTrack(file, track, fileName) {
   const channels = track.channels || 0;
   const sampleRate = Math.round(track.audioSampleRate || track.timescale || 0);
   const bitsPerSample = track.bitsPerSample || 0;
@@ -112,15 +110,15 @@ async function decodeMovPcmAudio(file, containerMeta) {
   const sampleCount = track.stsz?.sampleCount || 0;
   const sampleSize = track.stsz?.sampleSize || 0;
   if (!channels || !sampleRate || !Number.isInteger(bytesPerSample) || !sampleCount) {
-    throw new Error(`${file.name}: MOV PCM 音轨描述不完整`);
+    throw new Error(`${fileName}: MOV PCM 音轨描述不完整`);
   }
   if ((track.framesPerPacket || 1) !== 1) {
-    throw new Error(`${file.name}: 暂不支持每 packet 多帧的 MOV PCM 音轨`);
+    throw new Error(`${fileName}: 暂不支持每 packet 多帧的 MOV PCM 音轨`);
   }
-  if (!sampleSize) throw new Error(`${file.name}: 暂不支持变长 MOV PCM sample table`);
-  if (sampleSize < channels * bytesPerSample) throw new Error(`${file.name}: MOV PCM sample size 无效`);
+  if (!sampleSize) throw new Error(`${fileName}: 暂不支持变长 MOV PCM sample table`);
+  if (sampleSize < channels * bytesPerSample) throw new Error(`${fileName}: MOV PCM sample size 无效`);
   if (!track.chunkOffsets?.length || !track.stsc?.length) {
-    throw new Error(`${file.name}: MOV PCM 音轨缺少 chunk table`);
+    throw new Error(`${fileName}: MOV PCM 音轨缺少 chunk table`);
   }
 
   const interleaved = new Float32Array(sampleCount * channels);
@@ -152,13 +150,50 @@ async function decodeMovPcmAudio(file, containerMeta) {
     samplesDone += samplesInChunk;
   }
 
-  if (samplesDone !== sampleCount) throw new Error(`${file.name}: MOV PCM 音轨数据不完整`);
+  if (samplesDone !== sampleCount) throw new Error(`${fileName}: MOV PCM 音轨数据不完整`);
   return {
     interleaved,
     sampleRate,
     channels,
+    frames: sampleCount,
     sourceBitsPerSample: bitsPerSample,
-    source: "MOV PCM",
+  };
+}
+
+async function decodeMovPcmAudio(file, containerMeta) {
+  const tracks = audioTracksFromMetadata(containerMeta);
+  if (!tracks.length) throw new Error(`${file.name}: 未检测到可直接解析的 MOV PCM 音轨`);
+  const decodedTracks = [];
+  for (const track of tracks) {
+    decodedTracks.push(await decodeMovPcmTrack(file, track, file.name));
+  }
+
+  const sampleRate = decodedTracks[0].sampleRate;
+  if (!decodedTracks.every(track => track.sampleRate === sampleRate)) {
+    throw new Error(`${file.name}: 多条 MOV PCM 音轨采样率不同，暂不支持直接合并`);
+  }
+
+  const channels = decodedTracks.reduce((sum, track) => sum + track.channels, 0);
+  const frames = Math.max(...decodedTracks.map(track => track.frames));
+  const interleaved = new Float32Array(frames * channels);
+  let targetChannelOffset = 0;
+  for (const track of decodedTracks) {
+    for (let frame = 0; frame < track.frames; frame++) {
+      const sourceBase = frame * track.channels;
+      const targetBase = frame * channels + targetChannelOffset;
+      for (let channel = 0; channel < track.channels; channel++) {
+        interleaved[targetBase + channel] = track.interleaved[sourceBase + channel] || 0;
+      }
+    }
+    targetChannelOffset += track.channels;
+  }
+
+  return {
+    interleaved,
+    sampleRate,
+    channels,
+    sourceBitsPerSample: Math.max(...decodedTracks.map(track => track.sourceBitsPerSample || 0)),
+    source: tracks.length > 1 ? `MOV PCM (${tracks.length} tracks)` : "MOV PCM",
   };
 }
 
