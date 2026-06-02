@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v0.4.10-202a36">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v0.4.11-202a36">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
