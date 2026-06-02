@@ -152,6 +152,21 @@ function parseStsz(view, box) {
   return { sampleSize, sampleCount, sizes };
 }
 
+function parseStsc(view, box) {
+  const count = view.getUint32(box.dataStart + 4);
+  const entries = [];
+  let pos = box.dataStart + 8;
+  for (let i = 0; i < count && pos + 12 <= box.end; i++) {
+    entries.push({
+      firstChunk: view.getUint32(pos),
+      samplesPerChunk: view.getUint32(pos + 4),
+      sampleDescriptionIndex: view.getUint32(pos + 8),
+    });
+    pos += 12;
+  }
+  return entries;
+}
+
 function parseChunkOffsets(view, box) {
   const count = view.getUint32(box.dataStart + 4);
   const offsets = [];
@@ -182,6 +197,49 @@ function codecLabel(type, compressorName = "") {
     lpcm: "Linear PCM",
   };
   return labels[type] || type || "";
+}
+
+function audioEndianFor(type, flags = 0) {
+  if (type === "sowt") return "little";
+  if (type === "twos" || type === "in24" || type === "in32") return "big";
+  if (flags & 2) return "big";
+  return "little";
+}
+
+function parseAudioSampleEntry(view, entryStart, entryEnd, type) {
+  const version = entryStart + 18 <= entryEnd ? view.getUint16(entryStart + 16) : 0;
+  const info = {
+    codec: codecLabel(type),
+    version,
+    channels: 0,
+    sampleRate: 0,
+    bitsPerSample: 0,
+    bytesPerPacket: 0,
+    framesPerPacket: 1,
+    endian: audioEndianFor(type),
+    floatingPoint: type === "fl32" || type === "fl64",
+  };
+
+  if (version === 2 && entryStart + 72 <= entryEnd) {
+    const flags = view.getUint32(entryStart + 60);
+    info.sampleRate = view.getFloat64(entryStart + 40);
+    info.channels = view.getUint32(entryStart + 48);
+    info.bitsPerSample = view.getUint32(entryStart + 56);
+    info.bytesPerPacket = view.getUint32(entryStart + 64);
+    info.framesPerPacket = view.getUint32(entryStart + 68) || 1;
+    info.endian = audioEndianFor(type, flags);
+    info.floatingPoint = Boolean(flags & 1) || info.floatingPoint;
+    return info;
+  }
+
+  if (entryStart + 36 <= entryEnd) {
+    info.channels = view.getUint16(entryStart + 24);
+    info.bitsPerSample = view.getUint16(entryStart + 26);
+    info.bytesPerPacket = Math.ceil(info.bitsPerSample / 8) * info.channels;
+    info.sampleRate = view.getUint32(entryStart + 32) / 65536;
+  }
+
+  return info;
 }
 
 function parseCompressorName(view, entryStart, entryEnd) {
@@ -234,7 +292,7 @@ function parseStsd(view, box) {
       entry.height = view.getUint16(pos + 34);
       entry.codec = codecLabel(type, compressorName);
     } else if (AUDIO_SAMPLE_TYPES.has(type)) {
-      entry.codec = codecLabel(type);
+      Object.assign(entry, parseAudioSampleEntry(view, pos, pos + size, type));
     } else if (type === "tmcd" && pos + 33 <= pos + size) {
       const flags = view.getUint32(pos + 20);
       const timeScale = view.getUint32(pos + 24);
@@ -274,6 +332,7 @@ function parseTrack(view, trak) {
 
   for (const box of children(view, stbl.dataStart, stbl.end)) {
     if (box.type === "stsd") track.sampleDescriptions = parseStsd(view, box);
+    if (box.type === "stsc") track.stsc = parseStsc(view, box);
     if (box.type === "stts") track.stts = parseStts(view, box);
     if (box.type === "stsz") track.stsz = parseStsz(view, box);
     if (box.type === "stco" || box.type === "co64") track.chunkOffsets = parseChunkOffsets(view, box);
@@ -283,6 +342,13 @@ function parseTrack(view, trak) {
   if (firstDesc) {
     track.sampleType = firstDesc.type;
     track.codec = firstDesc.codec || codecLabel(firstDesc.type);
+    if (firstDesc.channels) track.channels = firstDesc.channels;
+    if (firstDesc.sampleRate) track.audioSampleRate = firstDesc.sampleRate;
+    if (firstDesc.bitsPerSample) track.bitsPerSample = firstDesc.bitsPerSample;
+    if (firstDesc.bytesPerPacket) track.bytesPerPacket = firstDesc.bytesPerPacket;
+    if (firstDesc.framesPerPacket) track.framesPerPacket = firstDesc.framesPerPacket;
+    if (firstDesc.endian) track.endian = firstDesc.endian;
+    if (firstDesc.floatingPoint) track.floatingPoint = true;
     if (firstDesc.width) track.width = firstDesc.width;
     if (firstDesc.height) track.height = firstDesc.height;
     if (firstDesc.timecode) track.timecodeDescription = firstDesc.timecode;
