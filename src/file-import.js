@@ -57,12 +57,16 @@ export function createFileImportController({
         await addDirectory(entry, relativePath);
       } else if (entry.kind === "file") {
         if (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name)) {
-          const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
-          pushRecord(await scanner(entry, {
-            relativePath,
-            parentPath: basePath,
-            parentHandle: handle,
-          }));
+          try {
+            const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+            pushRecord(await scanner(entry, {
+              relativePath,
+              parentPath: basePath,
+              parentHandle: handle,
+            }));
+          } catch (error) {
+            log(`ERROR: ${error.message}`);
+          }
         } else if (metadataSuffix && metadataSuffix.test(entry.name)) {
           const text = await readFileAsText(entry);
           const metaRecords = parseMetadataImport(text, entry.name);
@@ -157,17 +161,21 @@ export function createFileImportController({
         await addEntry(child, `${basePath}/${child.name}`);
       }
     } else if (entry.isFile && (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name))) {
-      const file = await entryFile(entry);
-      const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
-      pushRecord(await scanner({
-        kind: "file",
-        name: entry.name,
-        getFile: async () => file,
-      }, {
-        relativePath: basePath,
-        parentPath: basePath.split("/").slice(0, -1).join("/"),
-        parentHandle: null,
-      }));
+      try {
+        const file = await entryFile(entry);
+        const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+        pushRecord(await scanner({
+          kind: "file",
+          name: entry.name,
+          getFile: async () => file,
+        }, {
+          relativePath: basePath,
+          parentPath: basePath.split("/").slice(0, -1).join("/"),
+          parentHandle: null,
+        }));
+      } catch (error) {
+        log(`ERROR: ${error.message}`);
+      }
     } else if (entry.isFile && metadataSuffix && metadataSuffix.test(entry.name)) {
       const file = await entryFile(entry);
       const buf = new Uint8Array(await file.arrayBuffer());

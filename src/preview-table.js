@@ -4,6 +4,7 @@ import {
   recordLabel,
   shortGroupLabel,
 } from "./grouping.js";
+import { fpsActionLabel } from "./wave-fps-metadata.js";
 
 export function createPreviewTableRenderer({
   els,
@@ -254,16 +255,12 @@ export function createPreviewTableRenderer({
         const hasOp = preview || recordWasChanged || recordWasCombined;
         pill.className = hasOp ? "pill ok" : "pill idle";
         if (rowIsFpsMetadataPreview) {
-          if (preview.fpsAction === "update-ixml") {
-            pill.textContent = "待更新 iXML";
-          } else if (preview.fpsAction === "create-ixml") {
-            pill.textContent = "将创建 iXML";
-          } else if (preview.fpsAction === "skip-missing-ixml") {
+          const action = preview.fpsAction || "unchanged";
+          pill.textContent = fpsActionLabel(action);
+          if (String(action).startsWith("skip")) {
             pill.className = "pill warn";
-            pill.textContent = "跳过：无 iXML";
-          } else {
+          } else if (action === "unchanged") {
             pill.className = "pill idle";
-            pill.textContent = "无需更改";
           }
         } else if (preview && !recordWasCombined) {
           pill.textContent = "Ready";

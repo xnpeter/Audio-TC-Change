@@ -279,20 +279,33 @@
         </label>
 
         <div class="fps-mode-note">
-          <strong>仅修改 iXML 帧率标签</strong>
-          <span>TimeReference、音频采样率、音频内容和文件时长保持不变。</span>
+          <strong>TimeReference、音频采样率和音频内容保持不变</strong>
+          <span>默认只改文件里已经有的帧率来源，不新造字段。</span>
         </div>
 
-        <fieldset class="fps-scope-fieldset fps-missing-fieldset">
-          <legend>缺少 iXML 的文件</legend>
+        <fieldset class="fps-scope-fieldset fps-policy-fieldset">
+          <legend>写入策略</legend>
           <label class="fps-radio-option">
-            <input id="fpsMissingIxmlSkip" type="radio" name="fpsMissingIxmlPolicy" value="skip" checked>
-            <span>跳过（推荐）</span>
+            <input id="fpsPolicyExisting" type="radio" name="fpsWritePolicy" value="existing" checked>
+            <span>按已有来源写入（推荐）</span>
           </label>
           <label class="fps-radio-option">
-            <input id="fpsMissingIxmlCreate" type="radio" name="fpsMissingIxmlPolicy" value="create">
-            <span>创建 iXML SPEED</span>
+            <input id="fpsPolicySkip" type="radio" name="fpsWritePolicy" value="skip">
+            <span>跳过</span>
           </label>
+          <label class="fps-radio-option">
+            <input id="fpsPolicyIxml" type="radio" name="fpsWritePolicy" value="ixml">
+            <span>只改 iXML</span>
+          </label>
+          <label class="fps-radio-option">
+            <input id="fpsPolicyBext" type="radio" name="fpsWritePolicy" value="bext">
+            <span>只改 bext aSPEED</span>
+          </label>
+          <label class="fps-radio-option">
+            <input id="fpsPolicyBoth" type="radio" name="fpsWritePolicy" value="both">
+            <span>两个都写入</span>
+          </label>
+          <div id="fpsPolicyHint" class="fps-policy-hint">有 iXML 就改 iXML，有 aSPEED 就改 aSPEED；两边都有就都改；都没有则跳过。不新造字段。</div>
         </fieldset>
 
         <div class="fps-preview-example">
@@ -441,8 +454,12 @@
       fpsScopeAllLabel: document.getElementById("fpsScopeAllLabel"),
       fpsMetadataSummary: document.getElementById("fpsMetadataSummary"),
       fpsMetadataTarget: document.getElementById("fpsMetadataTarget"),
-      fpsMissingIxmlSkip: document.getElementById("fpsMissingIxmlSkip"),
-      fpsMissingIxmlCreate: document.getElementById("fpsMissingIxmlCreate"),
+      fpsPolicyExisting: document.getElementById("fpsPolicyExisting"),
+      fpsPolicySkip: document.getElementById("fpsPolicySkip"),
+      fpsPolicyIxml: document.getElementById("fpsPolicyIxml"),
+      fpsPolicyBext: document.getElementById("fpsPolicyBext"),
+      fpsPolicyBoth: document.getElementById("fpsPolicyBoth"),
+      fpsPolicyHint: document.getElementById("fpsPolicyHint"),
       fpsMetadataExample: document.getElementById("fpsMetadataExample"),
       fpsMetadataCancelBtn: document.getElementById("fpsMetadataCancelBtn"),
       fpsMetadataPreviewBtn: document.getElementById("fpsMetadataPreviewBtn"),

@@ -169,6 +169,7 @@ export function ixmlRateToFpsValue(ixmlInfo) {
 }
 
 const ASPEED_RE = /\baSPEED\s*=\s*(\d+(?:\.\d+)?)(?:\s*-\s*([A-Za-z]+))?/i;
+const BEXT_DESCRIPTION_SIZE = 256;
 
 export function parseBextAspeed(text) {
   if (!text) return null;
@@ -187,6 +188,33 @@ export function parseBextAspeed(text) {
 
 export function bextAspeedToFpsValue(bextInfo) {
   return parseBextAspeed(bextInfo?.description)?.fpsValue || null;
+}
+
+export function aspeedTextForValue(value) {
+  const fps = parseFps(value);
+  const rate = fpsRate(fps);
+  const numeric = Number(rate.n) / Number(rate.d);
+  const formatted = numeric.toFixed(3).padStart(7, "0");
+  return `aSPEED=${formatted}-${fps.drop ? "DF" : "ND"}`;
+}
+
+export function updateBextDescriptionAspeed(description, fpsValue, { create = false } = {}) {
+  const nextAspeed = aspeedTextForValue(fpsValue);
+  const text = String(description || "");
+  if (ASPEED_RE.test(text)) return text.replace(ASPEED_RE, nextAspeed);
+  if (!create) return null;
+  const trimmed = text.replace(/\0+$/g, "").trimEnd();
+  return trimmed ? `${trimmed}\r\n${nextAspeed}` : `${nextAspeed}\r\n`;
+}
+
+export function bextDescriptionFieldBytes(text) {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.length >= BEXT_DESCRIPTION_SIZE) {
+    throw new Error("bext Description 无法容纳 aSPEED");
+  }
+  const bytes = new Uint8Array(BEXT_DESCRIPTION_SIZE);
+  bytes.set(encoded);
+  return bytes;
 }
 
 

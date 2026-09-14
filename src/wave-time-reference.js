@@ -1,8 +1,12 @@
 import {
   LITTLE,
-  ascii,
+  chunkSize32,
+  ds64ChunkData,
   ixmlTimeReferenceValue,
+  listWaveChunks,
   scanWave,
+  toSafeNumber,
+  waveFileHeader,
 } from "./wave.js";
 
 export function paddedDecimal(value, length, label) {
@@ -89,8 +93,24 @@ export function shouldRestoreIxmlShape(record, targetIxmlInfo, value) {
 export function chunkHeader(id, size) {
   const header = new Uint8Array(8);
   for (let i = 0; i < 4; i++) header[i] = id.charCodeAt(i);
-  new DataView(header.buffer).setUint32(4, size, LITTLE);
+  new DataView(header.buffer).setUint32(4, chunkSize32(size), LITTLE);
   return header;
+}
+
+const COPY_CHUNK_SIZE = 8 * 1024 * 1024;
+
+async function copyFileRange(file, writable, sourceStart, sourceSize, destPos) {
+  let remaining = sourceSize;
+  let src = sourceStart;
+  let dest = destPos;
+  while (remaining > 0) {
+    const bytes = Math.min(COPY_CHUNK_SIZE, remaining);
+    const data = new Uint8Array(await file.slice(src, src + bytes).arrayBuffer());
+    await writable.write({ type: "write", position: dest, data });
+    src += bytes;
+    dest += bytes;
+    remaining -= bytes;
+  }
 }
 
 export function writeAsciiPadded(target, offset, length, text) {
@@ -130,70 +150,102 @@ export function bextChunkData(record, value) {
 
 export async function rewriteWaveTimeReference(record, value, writable, targetIxmlInfo = record.ixmlInfo) {
   const file = await record.fileHandle.getFile();
-  const buffer = await file.arrayBuffer();
-  const view = new DataView(buffer);
-  if (view.byteLength < 12 || ascii(view, 0, 4) !== "RIFF" || ascii(view, 8, 4) !== "WAVE") {
-    throw new Error(`${record.name}: 不是 RIFF/WAVE 文件`);
-  }
-
+  const listed = await listWaveChunks(file, record.name);
+  const smallChunkMax = 4 * 1024 * 1024;
   const descriptors = [];
   let hasBext = false;
-  let pos = 12;
-  const limit = Math.min(view.byteLength, view.getUint32(4, LITTLE) + 8);
-  while (pos + 8 <= limit) {
-    const id = ascii(view, pos, 4);
-    const size = view.getUint32(pos + 4, LITTLE);
-    const start = pos + 8;
-    if (start + size > view.byteLength) throw new Error(`${record.name}: chunk 数据截断`);
-    let data = new Uint8Array(buffer, start, size);
+  let outDataSize = 0n;
 
-    if (id === "bext") {
-      if (size < 346) throw new Error(`${record.name}: bext chunk 过短`);
+  for (const chunk of listed.chunks) {
+    if (chunk.id === "ds64") continue;
+    const size = toSafeNumber(chunk.size, `${record.name} ${chunk.id} chunk`);
+    if (chunk.id === "data" || size > smallChunkMax) {
+      if (chunk.id === "data") outDataSize = chunk.size;
+      descriptors.push({ id: chunk.id, fileOffset: chunk.start, size: chunk.size, stream: true });
+      continue;
+    }
+
+    let data = new Uint8Array(await file.slice(chunk.start, chunk.start + size).arrayBuffer());
+    if (chunk.id === "bext") {
+      if (data.byteLength < 346) throw new Error(`${record.name}: bext chunk 过短`);
       hasBext = true;
       data = new Uint8Array(data);
-      new DataView(data.buffer, data.byteOffset, data.byteLength).setBigUint64(338, value, LITTLE);
-    } else if (id === "iXML" && record.ixmlInfo) {
+      new DataView(data.buffer).setBigUint64(338, value, LITTLE);
+    } else if (chunk.id === "iXML" && record.ixmlInfo) {
       const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(data);
       data = new TextEncoder().encode(rewriteIxmlChunkText(xml, record, value, targetIxmlInfo));
     }
-
-    descriptors.push({ id, data });
-    pos = start + size + (size & 1);
+    descriptors.push({ id: chunk.id, data });
   }
 
   if (!hasBext) {
-    const insertAt = Math.max(1, descriptors.findIndex(descriptor => descriptor.id === "data"));
+    const insertAt = Math.max(0, descriptors.findIndex(descriptor => descriptor.id === "data"));
     const descriptor = { id: "bext", data: bextChunkData(record, value) };
-    if (insertAt > 0) descriptors.splice(insertAt, 0, descriptor);
+    if (insertAt >= 0) descriptors.splice(insertAt, 0, descriptor);
     else descriptors.push(descriptor);
   }
 
-  let riffSize = 4;
+  let estimated = 4;
   for (const descriptor of descriptors) {
-    riffSize += 8 + descriptor.data.byteLength + (descriptor.data.byteLength & 1);
+    const size = descriptor.stream ? toSafeNumber(descriptor.size, `${record.name} ${descriptor.id}`) : descriptor.data.byteLength;
+    estimated += 8 + size + (size & 1);
   }
-  if (riffSize > 0xffffffff) throw new Error(`${record.name}: 文件超过 RIFF 4GB 大小限制`);
-
-  const riffHeader = new Uint8Array(12);
-  riffHeader.set([82, 73, 70, 70], 0);
-  new DataView(riffHeader.buffer).setUint32(4, riffSize, LITTLE);
-  riffHeader.set([87, 65, 86, 69], 8);
+  const keep64 = listed.container === "RF64" || listed.container === "BW64";
+  const use64 = keep64 || estimated > 0xffffffff;
+  const outContainer = listed.container === "BW64" ? "BW64" : use64 ? "RF64" : "RIFF";
 
   let writePos = 0;
-  await writable.write({ type: "write", position: writePos, data: riffHeader });
-  writePos += riffHeader.byteLength;
+  await writable.write({
+    type: "write",
+    position: 0,
+    data: waveFileHeader(outContainer, outContainer === "RIFF" ? 0 : 0xffffffff),
+  });
+  writePos = 12;
+
+  let ds64Pos = null;
+  if (outContainer !== "RIFF") {
+    ds64Pos = writePos;
+    const placeholder = new Uint8Array(36);
+    placeholder.set([0x64, 0x73, 0x36, 0x34], 0);
+    new DataView(placeholder.buffer).setUint32(4, 28, LITTLE);
+    await writable.write({ type: "write", position: writePos, data: placeholder });
+    writePos += placeholder.byteLength;
+  }
 
   const pad = new Uint8Array([0]);
   for (const descriptor of descriptors) {
-    const header = chunkHeader(descriptor.id, descriptor.data.byteLength);
-    await writable.write({ type: "write", position: writePos, data: header });
-    writePos += header.byteLength;
-    await writable.write({ type: "write", position: writePos, data: descriptor.data });
-    writePos += descriptor.data.byteLength;
-    if (descriptor.data.byteLength & 1) {
+    const size = descriptor.stream ? descriptor.size : BigInt(descriptor.data.byteLength);
+    if (descriptor.id === "data") outDataSize = size;
+    const sizeNumber = toSafeNumber(size, `${record.name} ${descriptor.id}`);
+    await writable.write({ type: "write", position: writePos, data: chunkHeader(descriptor.id, size) });
+    writePos += 8;
+    if (descriptor.stream) {
+      await copyFileRange(file, writable, descriptor.fileOffset, sizeNumber, writePos);
+    } else {
+      await writable.write({ type: "write", position: writePos, data: descriptor.data });
+    }
+    writePos += sizeNumber;
+    if (sizeNumber & 1) {
       await writable.write({ type: "write", position: writePos, data: pad });
       writePos += 1;
     }
+  }
+
+  const riffSize = writePos - 8;
+  if (outContainer === "RIFF") {
+    if (riffSize > 0xffffffff) throw new Error(`${record.name}: 文件超过 RIFF 4GB 大小限制`);
+    const sizePatch = new Uint8Array(4);
+    new DataView(sizePatch.buffer).setUint32(0, riffSize, LITTLE);
+    await writable.write({ type: "write", position: 4, data: sizePatch });
+  } else {
+    const sampleCount = record.blockAlign
+      ? outDataSize / BigInt(record.blockAlign)
+      : record.durationSamples || 0n;
+    await writable.write({
+      type: "write",
+      position: ds64Pos + 8,
+      data: ds64ChunkData({ riffSize, dataSize: outDataSize, sampleCount }),
+    });
   }
   await writable.truncate(writePos);
 }
@@ -227,8 +279,8 @@ export async function writeTimeReference(preview, value, writable = null) {
       parentHandle: preview.parentHandle,
     })
     : preview;
-  const patch = new ArrayBuffer(8);
-  new DataView(patch).setBigUint64(0, value, LITTLE);
+  const patch = new Uint8Array(8);
+  new DataView(patch.buffer).setBigUint64(0, value, LITTLE);
   const ownWritable = !writable;
   const restoreShape = shouldRestoreIxmlShape(record, preview.ixmlInfo, value);
   const needsBext = !record.hasBext || record.timeReferenceOffset === null;

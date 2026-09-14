@@ -1,12 +1,14 @@
 import {
-  fpsValueEquivalent,
+  bextAspeedToFpsValue,
   ixmlRateToFpsValue,
   parseFps,
 } from "./timecode.js";
 import { recordKey } from "./grouping.js";
 import { scanWave } from "./wave.js";
 import {
-  ixmlFpsMetadataForValue,
+  fpsActionLabel,
+  planFpsWrite,
+  readBextDescriptionBytes,
   readIxmlChunkBytes,
   restoreFpsMetadata,
   verifyFpsMetadata,
@@ -61,7 +63,7 @@ export function createFpsWriteController({
 
   function setApplyMode(isFpsPreview) {
     els.applyBtn.textContent = isFpsPreview ? "写入帧率元数据" : "写入";
-    els.applyBtn.title = isFpsPreview ? "写入 iXML 帧率元数据" : "写入";
+    els.applyBtn.title = isFpsPreview ? "写入帧率元数据" : "写入";
   }
 
   function previewIsFpsMetadata() {
@@ -73,22 +75,47 @@ export function createFpsWriteController({
     return option ? `${option.textContent} FPS` : fpsSelectLabel(value);
   }
 
+  function selectedFpsPolicy() {
+    if (els.fpsPolicySkip?.checked) return "skip";
+    if (els.fpsPolicyIxml?.checked) return "ixml";
+    if (els.fpsPolicyBext?.checked) return "bext";
+    if (els.fpsPolicyBoth?.checked) return "both";
+    return "existing";
+  }
+
   function currentFpsSummary(records) {
-    const counts = new Map();
+    const groups = new Map();
     let missing = 0;
     for (const record of records) {
-      const value = ixmlRateToFpsValue(record.ixmlInfo);
-      if (!value) {
+      const ixml = ixmlRateToFpsValue(record.ixmlInfo);
+      const aspeed = bextAspeedToFpsValue(record.bextInfo);
+      if (!ixml && !aspeed) {
         missing += 1;
         continue;
       }
-      const label = metadataFpsLabel(value);
-      counts.set(label, (counts.get(label) || 0) + 1);
+      const source = ixml && aspeed ? "iXML + aSPEED" : ixml ? "仅 iXML" : "仅 bext aSPEED";
+      const value = ixml && aspeed && ixml !== aspeed
+        ? `${metadataFpsLabel(ixml)} / ${metadataFpsLabel(aspeed)}`
+        : metadataFpsLabel(ixml || aspeed);
+      const key = `${value} · ${source}`;
+      groups.set(key, (groups.get(key) || 0) + 1);
     }
     return {
-      counts: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]),
+      counts: Array.from(groups.entries()).sort((a, b) => b[1] - a[1]),
       missing,
     };
+  }
+
+  const POLICY_HINTS = {
+    existing: "有 iXML 就改 iXML，有 aSPEED 就改 aSPEED；两边都有就都改；都没有则跳过。不新造字段。",
+    skip: "不写入任何文件。",
+    ixml: "只写 iXML。没有 iXML 的文件会创建 SPEED。不改 aSPEED。",
+    bext: "只改已有的 aSPEED。没有 aSPEED 的文件跳过。不新写 aSPEED，也不动 iXML。",
+    both: "iXML 和 aSPEED 都写。缺 iXML 就创建；缺 aSPEED 且已有 bext 就补一行。",
+  };
+
+  function updatePolicyHint() {
+    if (els.fpsPolicyHint) els.fpsPolicyHint.textContent = POLICY_HINTS[selectedFpsPolicy()];
   }
 
   function renderDialogSummary() {
@@ -99,7 +126,7 @@ export function createFpsWriteController({
       const row = document.createElement("div");
       row.className = "fps-summary-row";
       const name = document.createElement("span");
-      name.textContent = `${label} · iXML`;
+      name.textContent = label;
       const value = document.createElement("span");
       value.textContent = `${count} 个`;
       row.append(name, value);
@@ -109,7 +136,7 @@ export function createFpsWriteController({
       const row = document.createElement("div");
       row.className = "fps-summary-row";
       const name = document.createElement("span");
-      name.textContent = "无 iXML 帧率";
+      name.textContent = "无帧率元数据";
       const value = document.createElement("span");
       value.textContent = `${missing} 个`;
       row.append(name, value);
@@ -120,6 +147,7 @@ export function createFpsWriteController({
       empty.textContent = "当前范围内没有可写入的 WAV";
       els.fpsMetadataSummary.appendChild(empty);
     }
+    updatePolicyHint();
     renderExample(records);
   }
 
@@ -153,7 +181,7 @@ export function createFpsWriteController({
     els.fpsScopeSelected.checked = selected.length > 0;
     els.fpsScopeAll.checked = selected.length === 0;
     els.fpsMetadataTarget.value = els.fpsInput.value;
-    els.fpsMissingIxmlSkip.checked = true;
+    if (els.fpsPolicyExisting) els.fpsPolicyExisting.checked = true;
     renderDialogSummary();
     els.fpsMetadataOverlay.classList.add("show");
     els.fpsMetadataOverlay.setAttribute("aria-hidden", "false");
@@ -166,27 +194,9 @@ export function createFpsWriteController({
     const targetValue = els.fpsMetadataTarget.value;
     const targetFps = parseFps(targetValue);
     const targetLabel = metadataFpsLabel(targetValue);
-    const targetMetadata = ixmlFpsMetadataForValue(targetValue);
-    const createIxml = els.fpsMissingIxmlCreate.checked;
+    const policy = selectedFpsPolicy();
     const nextPreviews = records.map(record => {
-      const oldValue = ixmlRateToFpsValue(record.ixmlInfo) || "";
-      const oldFlag = record.ixmlInfo?.timecodeFlag?.value?.trim().toUpperCase() || "";
-      const alreadyMatches = Boolean(
-        record.ixmlInfo?.timecodeRate &&
-        record.ixmlInfo?.timecodeFlag &&
-        oldValue &&
-        fpsValueEquivalent(oldValue, targetValue) &&
-        oldFlag === targetMetadata.timecodeFlag
-      );
-      const missingIxml = !record.ixmlInfo;
-      const willWrite = !alreadyMatches && (!missingIxml || createIxml);
-      const action = alreadyMatches
-        ? "unchanged"
-        : missingIxml && !createIxml
-          ? "skip-missing-ixml"
-          : missingIxml
-            ? "create-ixml"
-            : "update-ixml";
+      const plan = planFpsWrite(record, targetValue, policy);
       return {
         ...record,
         operation: "fps-metadata",
@@ -195,13 +205,16 @@ export function createFpsWriteController({
         fpsValue: targetValue,
         fpsTargetValue: targetValue,
         fpsTargetLabel: targetLabel,
-        fpsOldValue: oldValue,
+        fpsOldValue: ixmlRateToFpsValue(record.ixmlInfo) || bextAspeedToFpsValue(record.bextInfo) || "",
         fpsOldDisplay: recordFpsDisplay(record),
         fpsDisplay: `${recordFpsDisplay(record)} → ${targetLabel}`,
         fpsSource: "FPS预览",
-        fpsAction: action,
-        fpsWillWrite: willWrite,
-        createIxml: missingIxml && createIxml,
+        fpsAction: plan.action,
+        fpsWillWrite: plan.willWrite,
+        fpsWriteIxml: plan.writeIxml,
+        fpsWriteAspeed: plan.writeAspeed,
+        createIxml: plan.createIxml,
+        createAspeed: plan.createAspeed,
         sampleOffset: 0n,
         newTimeReference: record.oldTimeReference,
       };
@@ -216,11 +229,11 @@ export function createFpsWriteController({
     renderRows();
     closeDialog();
     setState(writeCount ? "可写入FPS" : "无需更改", writeCount ? "warn" : "ok");
-    const skipped = nextPreviews.filter(preview => preview.fpsAction === "skip-missing-ixml").length;
+    const skipped = nextPreviews.filter(preview => String(preview.fpsAction).startsWith("skip")).length;
     els.statusLine.textContent = writeCount
-      ? `${writeCount} 个 WAV 将写入 ${targetLabel}${skipped ? `；${skipped} 个无 iXML 文件将跳过` : ""}`
+      ? `${writeCount} 个 WAV 将写入 ${targetLabel}${skipped ? `；${skipped} 个将跳过` : ""}`
       : "当前范围内没有需要写入的帧率元数据";
-    log(`FPS Preview OK: ${writeCount}/${nextPreviews.length} writable, target ${targetLabel}, create iXML ${createIxml ? "yes" : "no"}`);
+    log(`FPS Preview OK: ${writeCount}/${nextPreviews.length} writable, target ${targetLabel}, policy ${policy}`);
   }
 
   async function applyChanges() {
@@ -228,12 +241,20 @@ export function createFpsWriteController({
     const writable = previews.filter(preview => preview.fpsWillWrite);
     if (!writable.length) throw new Error("没有需要写入的帧率元数据");
     const targetLabel = writable[0].fpsTargetLabel;
-    const createCount = writable.filter(preview => preview.createIxml).length;
+    const ixmlCount = writable.filter(preview => preview.fpsWriteIxml && !preview.createIxml).length;
+    const createIxmlCount = writable.filter(preview => preview.createIxml).length;
+    const aspeedCount = writable.filter(preview => preview.fpsWriteAspeed && !preview.createAspeed).length;
+    const createAspeedCount = writable.filter(preview => preview.createAspeed).length;
     const confirmed = await showConfirmDialog({
       title: "写入帧率元数据？",
       copy: [
-        `将把 <strong>${writable.length} 个 WAV</strong> 的 iXML 帧率修改为 <strong>${targetLabel}</strong>。`,
-        createCount ? `其中 <strong>${createCount} 个文件</strong>将创建新的 iXML SPEED。` : "",
+        `将把 <strong>${writable.length} 个 WAV</strong> 的帧率元数据修改为 <strong>${targetLabel}</strong>。`,
+        [
+          ixmlCount ? `${ixmlCount} 个更新 iXML` : "",
+          createIxmlCount ? `${createIxmlCount} 个创建 iXML` : "",
+          aspeedCount ? `${aspeedCount} 个更新 aSPEED` : "",
+          createAspeedCount ? `${createAspeedCount} 个写入 aSPEED` : "",
+        ].filter(Boolean).join("，"),
         "TimeReference、音频采样率、音频内容和文件时长均保持不变。",
       ].filter(Boolean).join("<br>"),
       confirmText: "写入帧率元数据",
@@ -254,7 +275,10 @@ export function createFpsWriteController({
         const preview = writable[i];
         updateWriteProgress("正在写入帧率元数据…", preview.name, i, writable.length);
         const undoItem = await writeFpsMetadata(preview, preview.fpsTargetValue, {
+          writeIxml: preview.fpsWriteIxml,
           createIxml: preview.createIxml,
+          writeAspeed: preview.fpsWriteAspeed,
+          createAspeed: preview.createAspeed,
         });
         undoItems.push(undoItem);
         updateWriteProgress("正在写入帧率元数据…", preview.name, i + 1, writable.length);
@@ -266,6 +290,9 @@ export function createFpsWriteController({
         verifyFpsMetadata(fresh, preview.fpsTargetValue, preview.oldTimeReference, preview.name, {
           sampleRate: preview.sampleRate,
           dataSize: preview.dataSize,
+        }, {
+          writeIxml: preview.fpsWriteIxml,
+          writeAspeed: preview.fpsWriteAspeed,
         });
       }
 
@@ -315,18 +342,26 @@ export function createFpsWriteController({
         await restoreFpsMetadata(item);
         updateWriteProgress("正在撤销帧率元数据…", item.name, i + 1, items.length);
       }
-      updateWriteProgress("正在校验…", "校验原始 iXML", items.length, items.length);
+      updateWriteProgress("正在校验…", "校验原始帧率元数据", items.length, items.length);
       for (const item of items) {
         const fresh = await scanWave(item.fileHandle);
         if (fresh.oldTimeReference !== item.oldTimeReference) {
           throw new Error(`${item.name}: 撤销后 TimeReference 不一致`);
         }
-        if (item.originalIxmlBytes === null) {
-          if (fresh.ixmlInfo) throw new Error(`${item.name}: 新建 iXML 未能移除`);
-        } else {
-          const currentBytes = await readIxmlChunkBytes(fresh);
-          if (!bytesEqual(currentBytes, item.originalIxmlBytes)) {
-            throw new Error(`${item.name}: 原始 iXML 恢复校验失败`);
+        if (item.wroteIxml) {
+          if (item.originalIxmlBytes === null) {
+            if (fresh.ixmlInfo) throw new Error(`${item.name}: 新建 iXML 未能移除`);
+          } else {
+            const currentBytes = await readIxmlChunkBytes(fresh);
+            if (!bytesEqual(currentBytes, item.originalIxmlBytes)) {
+              throw new Error(`${item.name}: 原始 iXML 恢复校验失败`);
+            }
+          }
+        }
+        if (item.wroteAspeed) {
+          const currentDescription = await readBextDescriptionBytes(fresh);
+          if (!bytesEqual(currentDescription, item.originalDescriptionBytes)) {
+            throw new Error(`${item.name}: 原始 bext aSPEED 恢复校验失败`);
           }
         }
       }
@@ -362,8 +397,12 @@ export function createFpsWriteController({
     els.fpsScopeSelected.addEventListener("change", renderDialogSummary);
     els.fpsScopeAll.addEventListener("change", renderDialogSummary);
     els.fpsMetadataTarget.addEventListener("change", () => renderExample());
-    els.fpsMissingIxmlSkip.addEventListener("change", () => renderExample());
-    els.fpsMissingIxmlCreate.addEventListener("change", () => renderExample());
+    for (const input of [els.fpsPolicyExisting, els.fpsPolicySkip, els.fpsPolicyIxml, els.fpsPolicyBext, els.fpsPolicyBoth]) {
+      input?.addEventListener("change", () => {
+        updatePolicyHint();
+        renderExample();
+      });
+    }
     els.fpsMetadataOverlay.addEventListener("click", event => {
       if (event.target === els.fpsMetadataOverlay) closeDialog();
     });

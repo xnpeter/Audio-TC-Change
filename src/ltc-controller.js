@@ -103,6 +103,7 @@ export function createLtcController({
         channels: record.channels,
         bitsPerSample: record.bitsPerSample,
         audioFormat: record.audioFormat,
+        isFloat: Boolean(record.isFloat || record.audioFormat === 3),
         blockAlign: record.blockAlign,
       },
       allowSoftSync: options.allowSoftSync === true,

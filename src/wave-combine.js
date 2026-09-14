@@ -1,4 +1,4 @@
-import { LITTLE, readDataView } from "./wave.js";
+import { LITTLE, ds64ChunkData, readDataView, waveFileHeader } from "./wave.js";
 import { writeSilenceSample } from "./wave-audio.js";
 import { parseFps } from "./timecode.js";
 import {
@@ -81,7 +81,7 @@ export function validateCombineGroup(groupRecords, options = {}) {
   if (!Number.isInteger(bytesPerSample)) throw new Error(`${groupLabel(first)}: 不支持 ${first.bitsPerSample} bit 合并`);
   const blockAlign = tracks.length * bytesPerSample;
   const dataSize = Number(minDuration) * blockAlign;
-  if (dataSize > 0xffffffff) throw new Error(`${groupLabel(first)}: 合并后超过 RIFF 4GB 限制`);
+  if (!Number.isSafeInteger(dataSize)) throw new Error(`${groupLabel(first)}: 合并后的 data 过大`);
   return { first, tracks, bytesPerSample, blockAlign, durationSamples: minDuration, dataSize };
 }
 
@@ -285,22 +285,54 @@ export async function writeCombinedPolyToWritable(key, groupRecords, writable, o
   const groupName = safeWaveBaseName(shortGroupLabel(key));
   const sourceInfo = combineSourceInfo(groupRecords, { fallbackFpsValue: options.fallbackFpsValue });
   const state = { position: 0 };
-  const riffHeader = new Uint8Array(12);
-  riffHeader.set([82, 73, 70, 70], 0);
-  riffHeader.set([87, 65, 86, 69], 8);
+  const bext = bextChunkDataForCombine(plan.first, sourceInfo, plan.tracks);
+  const ixml = new TextEncoder().encode(ixmlTextForCombine(plan.first, sourceInfo, plan.tracks));
+  const fmt = fmtChunkDataForCombine(plan.first, plan.tracks.length, plan.blockAlign);
+  const riffBody =
+    4 +
+    (8 + bext.byteLength + (bext.byteLength & 1)) +
+    (8 + ixml.byteLength + (ixml.byteLength & 1)) +
+    (8 + fmt.byteLength + (fmt.byteLength & 1)) +
+    (8 + plan.dataSize + (plan.dataSize & 1));
+  const useRf64 = riffBody > 0xffffffff;
 
   try {
-    await writable.write({ type: "write", position: 0, data: riffHeader });
+    await writable.write({
+      type: "write",
+      position: 0,
+      data: waveFileHeader(useRf64 ? "RF64" : "RIFF", useRf64 ? 0xffffffff : 0),
+    });
     state.position = 12;
-    await writeChunk(writable, state, "bext", bextChunkDataForCombine(plan.first, sourceInfo, plan.tracks));
-    await writeChunk(writable, state, "iXML", new TextEncoder().encode(ixmlTextForCombine(plan.first, sourceInfo, plan.tracks)));
-    await writeChunk(writable, state, "fmt ", fmtChunkDataForCombine(plan.first, plan.tracks.length, plan.blockAlign));
+    let ds64Pos = null;
+    if (useRf64) {
+      ds64Pos = state.position;
+      const placeholder = new Uint8Array(36);
+      placeholder.set([0x64, 0x73, 0x36, 0x34], 0);
+      new DataView(placeholder.buffer).setUint32(4, 28, LITTLE);
+      await writable.write({ type: "write", position: state.position, data: placeholder });
+      state.position += placeholder.byteLength;
+    }
+    await writeChunk(writable, state, "bext", bext);
+    await writeChunk(writable, state, "iXML", ixml);
+    await writeChunk(writable, state, "fmt ", fmt);
     await writeCombinedData(writable, state, plan, progressBase, progressTotal, options.onProgress);
     const riffSize = state.position - 8;
-    if (riffSize > 0xffffffff) throw new Error(`${groupName}: 合并后超过 RIFF 4GB 限制`);
-    const sizePatch = new Uint8Array(4);
-    new DataView(sizePatch.buffer).setUint32(0, riffSize, LITTLE);
-    await writable.write({ type: "write", position: 4, data: sizePatch });
+    if (useRf64) {
+      await writable.write({
+        type: "write",
+        position: ds64Pos + 8,
+        data: ds64ChunkData({
+          riffSize,
+          dataSize: plan.dataSize,
+          sampleCount: plan.durationSamples,
+        }),
+      });
+    } else {
+      if (riffSize > 0xffffffff) throw new Error(`${groupName}: 合并后超过 RIFF 4GB 限制`);
+      const sizePatch = new Uint8Array(4);
+      new DataView(sizePatch.buffer).setUint32(0, riffSize, LITTLE);
+      await writable.write({ type: "write", position: 4, data: sizePatch });
+    }
     await writable.truncate(state.position);
   } finally {
     await writable.close();

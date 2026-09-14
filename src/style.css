@@ -1652,6 +1652,7 @@ footer .copyright {
 
 .fps-scope-fieldset,
 .fps-missing-fieldset,
+.fps-policy-fieldset,
 .fps-current-block,
 .fps-mode-note,
 .fps-preview-example {
@@ -1666,8 +1667,25 @@ footer .copyright {
   gap: 18px;
 }
 
+.fps-policy-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.fps-policy-hint {
+  flex: 1 0 100%;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .fps-scope-fieldset legend,
 .fps-missing-fieldset legend,
+.fps-policy-fieldset legend,
 .fps-dialog-label {
   color: var(--muted);
   font-size: 12px;

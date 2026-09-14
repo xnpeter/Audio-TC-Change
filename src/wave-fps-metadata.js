@@ -1,11 +1,15 @@
 import {
+  bextAspeedToFpsValue,
+  bextDescriptionFieldBytes,
   fpsValueEquivalent,
   ixmlRateToFpsValue,
   parseFps,
+  updateBextDescriptionAspeed,
 } from "./timecode.js";
 import {
   LITTLE,
-  ascii,
+  paddedAsciiField,
+  readWaveContainer,
   scanWave,
 } from "./wave.js";
 import {
@@ -23,6 +27,94 @@ export function ixmlFpsMetadataForValue(value) {
     timecodeRate: `${rate.n}/${rate.d}`,
     timecodeFlag: fps.drop ? "DF" : "NDF",
   };
+}
+
+function ixmlAlreadyMatches(record, targetValue) {
+  const oldValue = ixmlRateToFpsValue(record.ixmlInfo);
+  const oldFlag = record.ixmlInfo?.timecodeFlag?.value?.trim().toUpperCase() || "";
+  const expected = ixmlFpsMetadataForValue(targetValue);
+  return Boolean(
+    record.ixmlInfo?.timecodeRate &&
+    record.ixmlInfo?.timecodeFlag &&
+    oldValue &&
+    fpsValueEquivalent(oldValue, targetValue) &&
+    oldFlag === expected.timecodeFlag
+  );
+}
+
+function aspeedAlreadyMatches(record, targetValue) {
+  const oldValue = bextAspeedToFpsValue(record.bextInfo);
+  return Boolean(oldValue && fpsValueEquivalent(oldValue, targetValue));
+}
+
+export function planFpsWrite(record, targetValue, policy = "existing") {
+  const hasIxmlChunk = Boolean(record.ixmlInfo);
+  const hasAspeed = Boolean(bextAspeedToFpsValue(record.bextInfo));
+  const hasBext = Boolean(record.hasBext || record.bextInfo);
+  const ixmlMatches = ixmlAlreadyMatches(record, targetValue);
+  const aspeedMatches = aspeedAlreadyMatches(record, targetValue);
+
+  let writeIxml = false;
+  let createIxml = false;
+  let writeAspeed = false;
+  let createAspeed = false;
+
+  if (policy === "ixml") {
+    createIxml = !hasIxmlChunk;
+    writeIxml = createIxml || !ixmlMatches;
+  } else if (policy === "bext") {
+    writeAspeed = hasBext && hasAspeed && !aspeedMatches;
+  } else if (policy === "both") {
+    createIxml = !hasIxmlChunk;
+    writeIxml = createIxml || !ixmlMatches;
+    createAspeed = hasBext && !hasAspeed;
+    writeAspeed = hasBext && (createAspeed || !aspeedMatches);
+  } else if (policy === "existing") {
+    writeIxml = hasIxmlChunk && !ixmlMatches;
+    writeAspeed = hasAspeed && !aspeedMatches;
+  }
+
+  const willWrite = writeIxml || writeAspeed;
+  let action = "unchanged";
+  if (!willWrite) {
+    if (policy === "skip") action = "skip-policy";
+    else if (policy === "bext" && !hasAspeed) action = "skip-no-aspeed";
+    else if (!hasIxmlChunk && !hasAspeed) action = "skip-no-fps";
+    else action = "unchanged";
+  } else {
+    const parts = [];
+    if (writeIxml) parts.push(createIxml ? "create-ixml" : "update-ixml");
+    if (writeAspeed) parts.push(createAspeed ? "create-aspeed" : "update-aspeed");
+    action = parts.join("+");
+  }
+
+  return {
+    writeIxml,
+    createIxml,
+    writeAspeed,
+    createAspeed,
+    willWrite,
+    action,
+  };
+}
+
+export function fpsActionLabel(action) {
+  const labels = {
+    "update-ixml": "待更新 iXML",
+    "create-ixml": "将创建 iXML",
+    "update-aspeed": "待更新 aSPEED",
+    "create-aspeed": "将写入 aSPEED",
+    "update-ixml+update-aspeed": "待更新 iXML+aSPEED",
+    "create-ixml+update-aspeed": "将创建 iXML，更新 aSPEED",
+    "create-ixml+create-aspeed": "将创建 iXML+aSPEED",
+    "update-ixml+create-aspeed": "待更新 iXML，写入 aSPEED",
+    "skip-no-fps": "跳过：无帧率元数据",
+    "skip-no-aspeed": "跳过：无 aSPEED",
+    "skip-policy": "跳过",
+    unchanged: "无需更改",
+    "skip-missing-ixml": "跳过：无 iXML",
+  };
+  return labels[action] || action;
 }
 
 async function blobBytes(blob) {
@@ -114,9 +206,7 @@ async function copyRange(file, writable, sourceStart, sourceEnd, delta) {
 export async function replaceIxmlChunk(record, replacementBytes) {
   const file = await record.fileHandle.getFile();
   const header = new DataView(await file.slice(0, 12).arrayBuffer());
-  if (header.byteLength < 12 || ascii(header, 0, 4) !== "RIFF" || ascii(header, 8, 4) !== "WAVE") {
-    throw new Error(`${record.name}: 不是 RIFF/WAVE 文件`);
-  }
+  const { container } = readWaveContainer(header, record.name);
 
   const oldStart = record.ixmlInfo ? record.ixmlInfo.chunkStart - 8 : record.dataOffset - 8;
   const oldSize = record.ixmlInfo?.chunkSize || 0;
@@ -125,11 +215,7 @@ export async function replaceIxmlChunk(record, replacementBytes) {
   const newTotal = replacementBytes ? 8 + newSize + (newSize & 1) : 0;
   const delta = newTotal - oldTotal;
   const newFileSize = file.size + delta;
-  const oldRiffSize = header.getUint32(4, LITTLE);
-  const newRiffSize = oldRiffSize + delta;
-  if (newRiffSize < 4 || newRiffSize > 0xffffffff) {
-    throw new Error(`${record.name}: 修改后的文件超过 RIFF 大小限制`);
-  }
+  const use64 = container === "RF64" || container === "BW64" || Boolean(record.ds64);
 
   const writable = await record.fileHandle.createWritable({ keepExistingData: true });
   try {
@@ -142,9 +228,22 @@ export async function replaceIxmlChunk(record, replacementBytes) {
         await writable.write({ type: "write", position: oldStart + 8 + newSize, data: new Uint8Array([0]) });
       }
     }
-    const riffSizePatch = new Uint8Array(4);
-    new DataView(riffSizePatch.buffer).setUint32(0, newRiffSize, LITTLE);
-    await writable.write({ type: "write", position: 4, data: riffSizePatch });
+    if (use64 && record.ds64) {
+      const newRiffSize = BigInt(record.ds64.riffSize) + BigInt(delta);
+      if (newRiffSize < 4n) throw new Error(`${record.name}: 修改后的 RF64 大小无效`);
+      const riffSizePatch = new Uint8Array(8);
+      new DataView(riffSizePatch.buffer).setBigUint64(0, newRiffSize, LITTLE);
+      await writable.write({ type: "write", position: record.ds64.chunkStart, data: riffSizePatch });
+    } else {
+      const oldRiffSize = header.getUint32(4, LITTLE);
+      const newRiffSize = oldRiffSize + delta;
+      if (newRiffSize < 4 || newRiffSize > 0xffffffff) {
+        throw new Error(`${record.name}: 修改后的文件超过 RIFF 4GB 限制`);
+      }
+      const riffSizePatch = new Uint8Array(4);
+      new DataView(riffSizePatch.buffer).setUint32(0, newRiffSize, LITTLE);
+      await writable.write({ type: "write", position: 4, data: riffSizePatch });
+    }
     await writable.truncate(newFileSize);
     await writable.close();
   } catch (error) {
@@ -157,7 +256,35 @@ function fieldFits(field, value) {
   return Boolean(field && value.length <= field.length);
 }
 
-export async function writeFpsMetadata(record, fpsValue, { createIxml = false } = {}) {
+export async function readBextDescriptionBytes(record) {
+  if (!record.bextInfo) return null;
+  const file = await record.fileHandle.getFile();
+  return blobBytes(file.slice(record.bextInfo.chunkStart, record.bextInfo.chunkStart + 256));
+}
+
+async function writeBextAspeed(record, fpsValue, { create = false } = {}) {
+  if (!record.bextInfo) throw new Error(`${record.name}: 没有 bext，无法写入 aSPEED`);
+  const originalDescriptionBytes = await readBextDescriptionBytes(record);
+  const currentText = paddedAsciiField(new DataView(
+    originalDescriptionBytes.buffer,
+    originalDescriptionBytes.byteOffset,
+    originalDescriptionBytes.byteLength,
+  ), 0, 256);
+  const nextText = updateBextDescriptionAspeed(currentText, fpsValue, { create });
+  if (nextText == null) throw new Error(`${record.name}: 没有 aSPEED，且未允许创建`);
+  const bytes = bextDescriptionFieldBytes(nextText);
+  const writable = await record.fileHandle.createWritable({ keepExistingData: true });
+  try {
+    await writable.write({ type: "write", position: record.bextInfo.chunkStart, data: bytes });
+    await writable.close();
+  } catch (error) {
+    await writable.abort().catch(() => {});
+    throw error;
+  }
+  return originalDescriptionBytes;
+}
+
+async function writeIxmlFps(record, fpsValue, { createIxml = false } = {}) {
   const { timecodeRate, timecodeFlag } = ixmlFpsMetadataForValue(fpsValue);
   const originalIxmlBytes = await readIxmlChunkBytes(record);
 
@@ -188,6 +315,29 @@ export async function writeFpsMetadata(record, fpsValue, { createIxml = false } 
     await replaceIxmlChunk(record, new TextEncoder().encode(text));
   }
 
+  return originalIxmlBytes;
+}
+
+export async function writeFpsMetadata(record, fpsValue, plan = {}) {
+  const {
+    writeIxml = false,
+    createIxml = false,
+    writeAspeed = false,
+    createAspeed = false,
+  } = plan;
+  if (!writeIxml && !writeAspeed) {
+    throw new Error(`${record.name}: 没有需要写入的帧率来源`);
+  }
+
+  let originalDescriptionBytes = null;
+  let originalIxmlBytes = null;
+  if (writeAspeed) {
+    originalDescriptionBytes = await writeBextAspeed(record, fpsValue, { create: createAspeed });
+  }
+  if (writeIxml) {
+    originalIxmlBytes = await writeIxmlFps(record, fpsValue, { createIxml });
+  }
+
   return {
     fileHandle: record.fileHandle,
     name: record.name,
@@ -195,17 +345,43 @@ export async function writeFpsMetadata(record, fpsValue, { createIxml = false } 
     parentPath: record.parentPath,
     parentHandle: record.parentHandle,
     originalIxmlBytes,
+    originalDescriptionBytes,
+    wroteIxml: writeIxml,
+    wroteAspeed: writeAspeed,
     oldTimeReference: record.oldTimeReference,
   };
 }
 
+async function restoreBextDescription(record, originalDescriptionBytes) {
+  if (!record.bextInfo || !originalDescriptionBytes) return;
+  const writable = await record.fileHandle.createWritable({ keepExistingData: true });
+  try {
+    await writable.write({
+      type: "write",
+      position: record.bextInfo.chunkStart,
+      data: originalDescriptionBytes,
+    });
+    await writable.close();
+  } catch (error) {
+    await writable.abort().catch(() => {});
+    throw error;
+  }
+}
+
 export async function restoreFpsMetadata(undoItem) {
-  const fresh = await scanWave(undoItem.fileHandle, {
+  const meta = {
     relativePath: undoItem.relativePath,
     parentPath: undoItem.parentPath,
     parentHandle: undoItem.parentHandle,
-  });
-  await replaceIxmlChunk(fresh, undoItem.originalIxmlBytes);
+  };
+  if (undoItem.wroteIxml) {
+    const fresh = await scanWave(undoItem.fileHandle, meta);
+    await replaceIxmlChunk(fresh, undoItem.originalIxmlBytes);
+  }
+  if (undoItem.wroteAspeed) {
+    const fresh = await scanWave(undoItem.fileHandle, meta);
+    await restoreBextDescription(fresh, undoItem.originalDescriptionBytes);
+  }
 }
 
 export function verifyFpsMetadata(
@@ -214,15 +390,24 @@ export function verifyFpsMetadata(
   expectedTimeReference,
   label = record.name,
   expectedAudio = {},
+  plan = {},
 ) {
-  const actualValue = ixmlRateToFpsValue(record.ixmlInfo);
-  if (!actualValue || !fpsValueEquivalent(actualValue, fpsValue)) {
-    throw new Error(`${label}: iXML 帧率校验失败`);
+  if (plan.writeIxml) {
+    const actualValue = ixmlRateToFpsValue(record.ixmlInfo);
+    if (!actualValue || !fpsValueEquivalent(actualValue, fpsValue)) {
+      throw new Error(`${label}: iXML 帧率校验失败`);
+    }
+    const expected = ixmlFpsMetadataForValue(fpsValue);
+    const actualFlag = record.ixmlInfo?.timecodeFlag?.value?.trim().toUpperCase();
+    if (actualFlag !== expected.timecodeFlag) {
+      throw new Error(`${label}: iXML DF/NDF 标记校验失败`);
+    }
   }
-  const expected = ixmlFpsMetadataForValue(fpsValue);
-  const actualFlag = record.ixmlInfo?.timecodeFlag?.value?.trim().toUpperCase();
-  if (actualFlag !== expected.timecodeFlag) {
-    throw new Error(`${label}: iXML DF/NDF 标记校验失败`);
+  if (plan.writeAspeed) {
+    const actualAspeed = bextAspeedToFpsValue(record.bextInfo);
+    if (!actualAspeed || !fpsValueEquivalent(actualAspeed, fpsValue)) {
+      throw new Error(`${label}: bext aSPEED 校验失败`);
+    }
   }
   if (record.oldTimeReference !== expectedTimeReference) {
     throw new Error(`${label}: TimeReference 校验失败`);

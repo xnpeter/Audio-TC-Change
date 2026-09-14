@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v1.0.1-202a36">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v1.1.0-202a36">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -66,6 +66,7 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 
 - 内置时间码计算器，方便计算两个时间码之间的差值。
 - 批量查看 WAV/BWF 文件的起始 TC、结束 TC、采样率、帧率和 TimeReference。
+- 支持标准 RIFF、RF64、BW64，以及 32-bit float / WAVEFORMATEXTENSIBLE PCM。
 - 支持 MOV/MP4 视频文件，读取内嵌时码（tmcd/rtmd）并导出元数据。
 - 批量偏移音频文件时间码，支持正负偏移。
 - 可直接写回 WAV/BWF 文件，也可导出 Resolve CSV 或 Avid ALE 元数据。
@@ -73,7 +74,7 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 - 自动识别 LTC 帧率，支持 23.976 到 120fps 的常见 DF 与 NDF 时码。
 - 支持混合帧率素材的时间码偏移。
 - 读取 iXML 和 bext `aSPEED` 中的帧率信息，并在文件 metadata 与界面帧率不一致时提示确认。
-- 批量修改 WAV 的 iXML 帧率 metadata，可选择跳过或为缺少 iXML 的文件创建 `SPEED` 信息。
+- 批量修改 WAV 帧率 metadata：默认按文件已有来源写入（iXML 和/或 bext `aSPEED`），也可跳过、只改一边，或两边都写。
 - 针对 ZOOM H 系列多轨 mono 文件结构做分组显示，例如 `ZOOM0001_Tr1.WAV`、`ZOOM0001_Tr2.WAV`。
 - 将 ZOOM H6 常见的 stereo LR + mono 分轨 take 批量合并为 Poly WAV，并写入 iXML track name。
 - 写入前预览结果，写入后生成 CSV 修改清单。
@@ -94,7 +95,7 @@ Audio TC Change 会：
 
 工具修改的是 WAV 文件头 metadata，不重编码音频，不改变声音内容，也不改变文件时长。视频文件仅读取时码信息，不直接修改视频文件本身，通过导出元数据（CSV/ALE）的方式传递时码到剪辑软件。
 
-单独修改文件 FPS 时，工具只更新 iXML 的 `TIMECODE_RATE` 和 `TIMECODE_FLAG`。它不会改变 `bext.TimeReference`、音频采样率或音频数据；同一个 sample count 只会按照新的帧率显示成不同的 `HH:MM:SS:FF`。
+单独修改文件 FPS 时，默认只更新文件里已经有的帧率来源：只有 iXML 就改 iXML，只有 bext `aSPEED` 就改 `aSPEED`，两边都有就都改，都没有则跳过。也可以手动选择只写 iXML、只写 `aSPEED`，或两边都写（缺的一侧会创建）。它不会改变 `bext.TimeReference`、音频采样率或音频数据；同一个 sample count 只会按照新的帧率显示成不同的 `HH:MM:SS:FF`。
 
 #### LTC 提取
 
@@ -212,6 +213,7 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 
 - Built-in timecode calculator for offset calculation.
 - Batch inspection of WAV/BWF start TC, end TC, sample rate, frame rate, and TimeReference.
+- Support standard RIFF, RF64, BW64, plus 32-bit float and WAVEFORMATEXTENSIBLE PCM.
 - Support MOV/MP4 video files — read embedded timecode (tmcd/rtmd) and export as metadata.
 - Batch positive or negative timecode offsets.
 - Write timecode back into WAV/BWF files, or export Resolve CSV / Avid ALE metadata.
@@ -219,7 +221,7 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 - Auto-detect LTC frame rate, supporting common DF and NDF rates from 23.976 to 120fps.
 - Handle mixed-frame-rate material during offset operations.
 - Read iXML and bext `aSPEED` frame-rate metadata and warn when it differs from the UI setting.
-- Batch-edit WAV iXML frame-rate metadata, with the option to skip files without iXML or create a `SPEED` object for them.
+- Batch-edit WAV frame-rate metadata. By default the app updates whichever sources a file already has (iXML and/or bext `aSPEED`); you can also skip, write only one side, or write both.
 - Group ZOOM H-series style split mono files, such as `ZOOM0001_Tr1.WAV` and `ZOOM0001_Tr2.WAV`.
 - Batch-combine ZOOM H6-style stereo LR + mono split-track takes into Poly WAV with iXML track names.
 - Preview before writing and generate a CSV manifest after writing.
@@ -240,7 +242,7 @@ Audio TC Change:
 
 The tool changes WAV file header metadata only. It does not re-encode audio, change the sound content, or change file duration. Video files are read-only — timecode is exported as metadata (CSV/ALE) for use in editing software.
 
-The dedicated file-FPS operation changes only iXML `TIMECODE_RATE` and `TIMECODE_FLAG`. It leaves `bext.TimeReference`, audio sample rate, and audio data unchanged; the same sample count is simply displayed as a different `HH:MM:SS:FF` value at the new rate.
+The dedicated file-FPS operation defaults to updating whichever frame-rate sources a file already has: iXML only, bext `aSPEED` only, or both. Files with neither source are skipped. Manual overrides can write just iXML, just `aSPEED`, or both (creating a missing side). It leaves `bext.TimeReference`, audio sample rate, and audio data unchanged; the same sample count is simply displayed as a different `HH:MM:SS:FF` value at the new rate.
 
 #### LTC Extraction
 

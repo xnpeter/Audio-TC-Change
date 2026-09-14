@@ -22,8 +22,10 @@ export function aleFpsLabel(fpsValue) {
 }
 
 export function audioCodecLabel(record) {
-  if (record.audioFormat === 3) return "IEEE Float";
-  if (record.audioFormat === 1) return "Linear PCM";
+  if (record.isFloat || record.audioFormat === 3) {
+    return record.bitsPerSample === 64 ? "IEEE Float 64" : "IEEE Float";
+  }
+  if (record.audioFormat === 1 || record.audioFormat === 65534) return "Linear PCM";
   return `WAVE format ${record.audioFormat}`;
 }
 
