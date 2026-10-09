@@ -28,6 +28,20 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
     });
   }
 
+  function confirmLooseFileImport(looseCount) {
+    return showConfirmDialog({
+      title: "建议改为导入文件夹",
+      primary: true,
+      cancelText: "仍使用这些文件",
+      confirmText: "改为选择文件夹…",
+      copy: [
+        `你单独拖入了 <strong>${looseCount}</strong> 个 WAV。浏览器只给单独拖入的文件读取权限，写入时会<strong>对每个文件各弹一次授权，共 ${looseCount} 次</strong>。`,
+        "改为导入它们所在的文件夹，写入只需授权一次，分轨 take 也能自动识别。选好文件夹后，会用文件夹里的内容替换刚才拖入的这批文件。",
+        "如果文件直接放在“下载”“桌面”“文稿”里，浏览器不允许选择这些文件夹，请先把文件移进一个子文件夹。"
+      ].join("<br>"),
+    });
+  }
+
   function confirmCombinePoly(groups, options = {}) {
     const trackCounts = groups.map(([key, groupRecords]) => {
       const tracks = combineTrackPlan(groupRecords);
@@ -96,6 +110,7 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
 
   return {
     confirmCombinePoly,
+    confirmLooseFileImport,
     confirmLtcFpsMismatch,
     confirmMetadataFpsMismatch,
     confirmWriteChanges,

@@ -520,6 +520,7 @@
     const confirmFlows = createConfirmFlows({ showConfirmDialog, fpsSelectLabel });
     const {
       confirmCombinePoly,
+      confirmLooseFileImport,
       confirmLtcFpsMismatch,
       confirmMetadataFpsMismatch,
       confirmWriteChanges,
@@ -878,6 +879,11 @@
       },
       getRecords: () => records,
       pushRecord: record => records.push(record),
+      discardRecords: list => {
+        const drop = new Set(list);
+        records = records.filter(record => !drop.has(record));
+      },
+      confirmLooseFileImport,
       clearAfterImportState: count => {
         lastUndoBatch = null;
         ltcResults = new Map();

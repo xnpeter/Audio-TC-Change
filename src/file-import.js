@@ -1,5 +1,8 @@
 import { isLooseWritableRecord } from "./write-permission.js";
 
+// Below this a few per-file permission prompts are tolerable, so the status-line hint is enough.
+const LOOSE_DIALOG_MIN = 5;
+
 // Recorder cards formatted as exFAT/FAT collect macOS "._*" sidecars, .Trashes, .Spotlight-V100, etc.
 function isHiddenName(name) {
   return String(name || "").startsWith(".");
@@ -35,6 +38,8 @@ export function createFileImportController({
   setDirectoryHandle,
   getRecords,
   pushRecord,
+  discardRecords,
+  confirmLooseFileImport,
   clearAfterImportState,
   refreshTakeGroups,
   takeGroupCount,
@@ -132,6 +137,28 @@ export function createFileImportController({
     renderRows();
     log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${videoRecords.length} video, ${metaRecords.length} metadata)`);
     if (looseCount > 1) log(`Permission NOTE: ${looseCount} loose WAV file(s) will each ask for write access`);
+
+    if (looseCount >= LOOSE_DIALOG_MIN && window.showDirectoryPicker && await confirmLooseFileImport(looseCount)) {
+      let handle = null;
+      try {
+        handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      } catch (error) {
+        if (error.name !== "AbortError") throw error;
+        log("Folder pick cancelled; keeping loose files");
+      }
+      if (handle) {
+        discardRecords(wavRecords.filter(isLooseWritableRecord));
+        await addHandle(handle);
+        if (getRecords().length > count) {
+          await finishImport(count, "Selected");
+        } else {
+          refreshTakeGroups();
+          renderRows();
+          els.statusLine.textContent = `文件夹“${handle.name}”里没有可导入的音频或视频`;
+        }
+        return;
+      }
+    }
 
     if (newRecords.length) {
       const fpsMeta = detectedMetadataFps(newRecords);
