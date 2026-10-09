@@ -55,6 +55,32 @@ export function createPreviewTableRenderer({
     return ltc.qualityRank === 1 ? "ltc-value-warn" : "ltc-value-ok";
   }
 
+  function formatLabel(record) {
+    const parts = [];
+    if (record.sampleRate) parts.push(`${Number((record.sampleRate / 1000).toFixed(3))}k`);
+    if (record.bitsPerSample) parts.push(`${record.bitsPerSample}bit`);
+    if (record.channels) parts.push(`${record.channels}ch`);
+    return parts.length ? parts.join(" · ") : "-";
+  }
+
+  function valueCell(oldValue, newValue, synced = false, extraClass = "") {
+    const td = document.createElement("td");
+    td.className = `mono value-cell ${extraClass}`.trim();
+    const current = document.createElement("span");
+    current.textContent = String(oldValue);
+    if (newValue == null || String(newValue) === String(oldValue)) {
+      if (synced) td.classList.add("ltc-value-ok");
+      td.appendChild(current);
+      return td;
+    }
+    current.className = "old-value";
+    const next = document.createElement("span");
+    next.className = "new-value";
+    next.textContent = String(newValue);
+    td.append(current, next);
+    return td;
+  }
+
   let lastSelectedKey = null;
 
   function selectableRecords() {
@@ -160,7 +186,7 @@ export function createPreviewTableRenderer({
         groupRow.dataset.groupRecordKeys = groupRecords.map(recordKey).join("\n");
         groupRow.addEventListener("click", event => setGroupSelection(groupRecords, event));
         const td = document.createElement("td");
-        td.colSpan = 15;
+        td.colSpan = 10;
         const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
         const detectedRecord = detected?.record || groupRecords[0];
         const detectedStartTc = detected ? ltcStartTimecode(detected, detectedRecord) : "";
@@ -188,7 +214,6 @@ export function createPreviewTableRenderer({
           ? preview.oldFps
           : preview?.fps || ltcFps?.fps || recordFps(record);
         const newFps = preview?.fps || oldFps;
-        const showUnchangedFpsRow = isFpsMetadataPreview && !preview;
         const fpsSource = preview?.fpsSource || ltcFps?.source || recordFpsSource(record);
         const recordWasChanged = changedTimeReferences.get(recordKey(record)) === record.oldTimeReference;
         sampleRates.add(record.sampleRate);
@@ -198,57 +223,64 @@ export function createPreviewTableRenderer({
         row.addEventListener("click", event => toggleRecordSelection(record, event));
         if (record._meta) row.classList.add("meta-record");
         if (record._video) row.classList.add("video-record");
-        const cells = [
-          recordLabel(record),
-          record.sampleRate || "-",
-          record.channels || "-",
-          record.bitsPerSample || "-",
-          preview?.fpsDisplay || ltcFps?.display || recordFpsDisplay(record),
-          samplesToTimecode(record.oldTimeReference, record.sampleRate || 48000, oldFps, { wrapDay: true }),
-          preview
-            ? samplesToTimecode(preview.newTimeReference, record.sampleRate || 48000, newFps, { wrapDay: true })
-            : showUnchangedFpsRow
-              ? samplesToTimecode(record.oldTimeReference, record.sampleRate || 48000, oldFps, { wrapDay: true })
-              : "待预览",
-          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate || 48000, oldFps, { wrapDay: true }),
-          preview
-            ? samplesToTimecode(preview.newTimeReference + record.durationSamples, record.sampleRate || 48000, newFps, { wrapDay: true })
-            : showUnchangedFpsRow
-              ? samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate || 48000, oldFps, { wrapDay: true })
-              : "待预览",
-          record.oldTimeReference,
-          preview ? preview.newTimeReference : showUnchangedFpsRow ? record.oldTimeReference : "待预览",
-          ltc ? ltcStartTimecode(ltc, record) : "待检测",
-          ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测",
-          formatDuration(record.durationSamples, record.sampleRate || 48000),
-        ];
-        cells.forEach((cell, index) => {
-          const td = document.createElement("td");
-          if (index === 0 && isTrackGroup) {
-            const name = document.createElement("span");
-            name.className = "track-name";
-            name.textContent = record.name;
-            td.appendChild(name);
-          } else if (index === 4) {
-            const badge = document.createElement("span");
-            badge.className = fpsBadgeClass(fpsSource);
-            badge.textContent = String(cell);
-            td.appendChild(badge);
-          } else {
-            td.textContent = String(cell);
-          }
-          if ([5, 6, 7, 8, 9, 10, 11].includes(index)) td.classList.add("mono");
-          if (!preview && !showUnchangedFpsRow && [6, 8, 10].includes(index)) td.classList.add("pending");
-          if (preview && [6, 8, 10].includes(index)) td.classList.add("new-value");
-          if (!preview && recordWasChanged && [5, 7].includes(index)) td.classList.add("ltc-value-ok");
-          if ([11, 12].includes(index)) td.classList.add("ltc-col");
-          if (index === 11 && (!ltc || !ltc.timecode)) td.classList.add("pending");
-          if ([11, 12].includes(index)) {
-            const qualityClass = ltcValueClass(ltc);
-            if (qualityClass) td.classList.add(qualityClass);
-          }
-          row.appendChild(td);
-        });
+
+        const sampleRate = record.sampleRate || 48000;
+        const endSamples = record.oldTimeReference + record.durationSamples;
+        const tcOptions = { wrapDay: true };
+
+        const nameCell = document.createElement("td");
+        nameCell.className = "file-cell";
+        const name = document.createElement("span");
+        if (isTrackGroup) name.className = "track-name";
+        name.textContent = isTrackGroup ? record.name : recordLabel(record);
+        nameCell.appendChild(name);
+
+        const formatCell = document.createElement("td");
+        formatCell.className = "format-cell";
+        formatCell.textContent = formatLabel(record);
+
+        const fpsCell = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = fpsBadgeClass(fpsSource);
+        badge.textContent = String(preview?.fpsDisplay || ltcFps?.display || recordFpsDisplay(record));
+        fpsCell.appendChild(badge);
+
+        const ltcTimecodeCell = document.createElement("td");
+        ltcTimecodeCell.className = "mono ltc-col";
+        ltcTimecodeCell.textContent = ltc ? ltcStartTimecode(ltc, record) : "待检测";
+        if (!ltc || !ltc.timecode) ltcTimecodeCell.classList.add("pending");
+        const ltcStatusCell = document.createElement("td");
+        ltcStatusCell.className = "ltc-col ltc-status";
+        ltcStatusCell.textContent = ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测";
+        const qualityClass = ltcValueClass(ltc);
+        if (qualityClass) {
+          ltcTimecodeCell.classList.add(qualityClass);
+          ltcStatusCell.classList.add(qualityClass);
+        }
+
+        const durationCell = document.createElement("td");
+        durationCell.className = "mono duration-cell";
+        durationCell.textContent = formatDuration(record.durationSamples, sampleRate);
+
+        row.append(
+          nameCell,
+          formatCell,
+          fpsCell,
+          valueCell(
+            samplesToTimecode(record.oldTimeReference, sampleRate, oldFps, tcOptions),
+            preview ? samplesToTimecode(preview.newTimeReference, sampleRate, newFps, tcOptions) : null,
+            !preview && recordWasChanged,
+          ),
+          valueCell(
+            samplesToTimecode(endSamples, sampleRate, oldFps, tcOptions),
+            preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, sampleRate, newFps, tcOptions) : null,
+            !preview && recordWasChanged,
+          ),
+          valueCell(record.oldTimeReference, preview ? preview.newTimeReference : null, false, "time-reference"),
+          ltcTimecodeCell,
+          ltcStatusCell,
+          durationCell,
+        );
         const recordWasCombined = combinedPolyKeys.has(recordKey(record));
         const result = document.createElement("td");
         const pill = document.createElement("span");

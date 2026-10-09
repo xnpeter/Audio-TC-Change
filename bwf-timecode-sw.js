@@ -33,6 +33,7 @@ const APP_ASSETS = [
   "./src/wave-fps-metadata.js",
   "./src/wave.js",
   "./src/wave-time-reference.js",
+  "./src/workspace-layout.js",
   "./bwf-timecode.webmanifest",
   "./bwf-timecode-icon.svg",
   "./bwf-timecode-icon-192.png",
