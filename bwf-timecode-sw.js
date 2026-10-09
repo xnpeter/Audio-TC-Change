@@ -38,13 +38,15 @@ const APP_ASSETS = [
   "./bwf-timecode.webmanifest",
   "./bwf-timecode-icon.svg",
   "./bwf-timecode-icon-192.png",
-  "./bwf-timecode-icon-512.png"
+  "./bwf-timecode-icon-512.png",
+  "./bwf-timecode-icon-maskable-512.png",
+  "./bwf-timecode-apple-touch-icon.png"
 ];
 
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_ASSETS))
+      .then(cache => cache.addAll(APP_ASSETS.map(url => new Request(url, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });

@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="Audio TC Change">
   <link rel="manifest" href="./bwf-timecode.webmanifest">
   <link rel="icon" href="./bwf-timecode-icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./bwf-timecode-icon-192.png">
+  <link rel="apple-touch-icon" href="./bwf-timecode-apple-touch-icon.png">
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
@@ -54,6 +54,7 @@
           <span>Sub-frame</span>
         </label>
         <span class="badge">本地处理 · 不上传</span>
+        <button id="updateBtn" class="install-btn update-btn" type="button" title="新版本已下载；刷新会清空当前文件列表" hidden>新版本可用 · 刷新</button>
         <button id="installBtn" class="install-btn" type="button" hidden>安装应用</button>
         <a class="github-link" href="https://github.com/xnpeter/Audio-TC-Change" target="_blank" rel="noopener noreferrer" title="GitHub" aria-label="GitHub">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
@@ -95,7 +96,8 @@
           </table>
           <div id="emptyState" class="empty" role="button" tabindex="0">
             <span class="empty-icon" aria-hidden="true"></span>
-            <span class="empty-title">点击选择文件夹，或把文件拖到这里</span>
+            <span class="empty-title">点击选择文件夹，或把文件夹拖到这里</span>
+            <span class="empty-hint">推荐导入整个文件夹：写入只需授权一次，分轨 take 也能自动识别</span>
             <span class="empty-sub">WAV / BWF / RF64 · MOV / MP4 · ALE / CSV</span>
           </div>
         </div>
@@ -901,7 +903,12 @@
 
     calculator.refreshCalculator();
     setupWorkspaceLayout();
-    setupPwa({ installBtn: els.installBtn, log });
+    setupPwa({
+      installBtn: els.installBtn,
+      updateBtn: document.getElementById("updateBtn"),
+      hasWorkInProgress: () => records.length > 0,
+      log,
+    });
     fileImport.setupDragAndDrop();
   </script>
 </body>

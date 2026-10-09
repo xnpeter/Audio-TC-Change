@@ -1,5 +1,10 @@
 import { isLooseWritableRecord } from "./write-permission.js";
 
+// Recorder cards formatted as exFAT/FAT collect macOS "._*" sidecars, .Trashes, .Spotlight-V100, etc.
+function isHiddenName(name) {
+  return String(name || "").startsWith(".");
+}
+
 async function readFileAsText(handle) {
   const file = await handle.getFile();
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -47,7 +52,9 @@ export function createFileImportController({
 }) {
   async function addDirectory(handle, basePath = handle.name) {
     const entries = [];
-    for await (const entry of handle.values()) entries.push(entry);
+    for await (const entry of handle.values()) {
+      if (!isHiddenName(entry.name)) entries.push(entry);
+    }
     entries.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
       return a.name.localeCompare(b.name);
@@ -158,7 +165,7 @@ export function createFileImportController({
       while (true) {
         const batch = await readEntryBatch(reader);
         if (!batch.length) break;
-        entries.push(...batch);
+        entries.push(...batch.filter(child => !isHiddenName(child.name)));
       }
       entries.sort((a, b) => {
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;

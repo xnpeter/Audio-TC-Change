@@ -258,6 +258,8 @@ h1, h2 { margin: 0; letter-spacing: 0; }
 .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
 .install-btn { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; }
+.update-btn { border-color: rgba(243, 181, 74, 0.45); background: var(--amber-soft); color: var(--amber); }
+.update-btn:hover { background: rgba(243, 181, 74, 0.2); border-color: var(--amber); }
 
 .github-link { color: var(--muted); display: inline-flex; }
 .github-link:hover { color: var(--ink); }
@@ -565,7 +567,8 @@ tbody tr.partial-selected-row td:first-child { box-shadow: inset 2px 0 0 rgba(53
 }
 .empty-icon::before { content: "↓"; color: var(--accent); font-size: 22px; line-height: 1; }
 .empty-title { font-size: 15px; font-weight: 500; color: var(--ink); }
-.empty-sub { font: 11.5px var(--mono); color: var(--muted); }
+.empty-hint { color: var(--muted); font-size: 12.5px; }
+.empty-sub { margin-top: 4px; font: 11.5px var(--mono); color: #4d5563; }
 
 .console {
   min-height: 34px;
