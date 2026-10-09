@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v1.1.0-202a36">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v1.2.0-1b8f7b">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -77,6 +77,8 @@ Audio TC Change 的 LTC 检测逻辑会扫描音频中可用的稳定 LTC 片段
 - 批量修改 WAV 帧率 metadata：默认按文件已有来源写入（iXML 和/或 bext `aSPEED`），也可跳过、只改一边，或两边都写。
 - 针对 ZOOM H 系列多轨 mono 文件结构做分组显示，例如 `ZOOM0001_Tr1.WAV`、`ZOOM0001_Tr2.WAV`。
 - 将 ZOOM H6 常见的 stereo LR + mono 分轨 take 批量合并为 Poly WAV，并写入 iXML track name。
+- 点击表头即可按文件名、起始/结束 TC、时长、LTC 时码等排序，分轨 take 整组移动。
+- 导入整个文件夹（支持多层子文件夹）时，写入只需授权一次。
 - 写入前预览结果，写入后生成 CSV 修改清单。
 - 支持撤销上一次写入。
 
@@ -149,7 +151,7 @@ Chrome 或 Edge 推荐使用，因为写回本地文件依赖 File System Access
 ### 建议流程
 
 1. 先复制一份素材，或确认已有备份。
-2. 载入音频文件夹。
+2. 载入音频文件夹：点击选择或直接拖入整个文件夹。不建议一次拖入大量零散文件，浏览器会对每个文件分别询问写入权限。
 3. 确认帧率设置，或按文件 metadata 提示切换。
 4. 输入偏移量，或使用时间码计算器计算差值。
 5. 点击预览，检查新起始 TC 和新结束 TC。
@@ -224,6 +226,8 @@ Audio TC Change searches for a stable usable LTC segment anywhere in the audio, 
 - Batch-edit WAV frame-rate metadata. By default the app updates whichever sources a file already has (iXML and/or bext `aSPEED`); you can also skip, write only one side, or write both.
 - Group ZOOM H-series style split mono files, such as `ZOOM0001_Tr1.WAV` and `ZOOM0001_Tr2.WAV`.
 - Batch-combine ZOOM H6-style stereo LR + mono split-track takes into Poly WAV with iXML track names.
+- Sort the file table by clicking a column header (file name, start/end TC, duration, LTC timecode, and more); split-track takes move as a group.
+- Importing a whole folder (nested subfolders included) needs only one write-permission prompt.
 - Preview before writing and generate a CSV manifest after writing.
 - Undo the previous write operation.
 
@@ -294,7 +298,7 @@ Chrome or Edge is recommended because writing local files depends on the File Sy
 ### Suggested Workflow
 
 1. Work on a copy, or make sure the source audio is backed up.
-2. Load the audio folder.
+2. Load the audio folder by clicking or dragging the whole folder in. Avoid dropping many loose files: the browser asks for write permission once per file.
 3. Confirm the frame-rate setting, or switch based on file metadata prompts.
 4. Enter an offset manually, or calculate it with the timecode calculator.
 5. Preview the new start and end timecode.
