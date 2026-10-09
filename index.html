@@ -16,7 +16,7 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="./bwf-timecode-icon.svg" alt="" width="26" height="26">
+        <span class="brand-logo" aria-hidden="true">TC</span>
         <h1 class="app-title">Audio TC Change <span id="appVersionBadge" class="app-version"></span></h1>
       </div>
       <div class="state-chip" aria-live="polite"><span class="state-dot" aria-hidden="true"></span><span id="stateText">待机</span></div>
@@ -397,6 +397,7 @@
     import { createPreviewTableRenderer } from "./src/preview-table.js";
     import { setupPwa } from "./src/pwa.js";
     import { setupWorkspaceLayout } from "./src/workspace-layout.js";
+    import { createWritePermissionController } from "./src/write-permission.js";
     import { createTimeReferenceWriteController } from "./src/time-reference-write-controller.js";
     import { createUiStateController } from "./src/ui-state.js";
     import {
@@ -520,11 +521,17 @@
       confirmLtcFpsMismatch,
       confirmMetadataFpsMismatch,
       confirmWriteChanges,
+      loosePermissionNote,
     } = confirmFlows;
 
     renderAppVersion(els.appVersionBadge);
 
     let directoryHandle = null;
+    let rootDirectoryHandles = [];
+    const { ensureFolderWriteAccess } = createWritePermissionController({
+      getRootDirectories: () => rootDirectoryHandles,
+      log,
+    });
     let records = [];
     let previews = [];
     let activeOffset = null;
@@ -708,6 +715,7 @@
       recordFps,
       samplesToTimecode,
       confirmWriteChanges,
+      ensureWriteAccess: ensureFolderWriteAccess,
       setState,
       updateWriteProgress,
       log,
@@ -728,6 +736,8 @@
       fpsSelectLabel,
       samplesToTimecode,
       showConfirmDialog,
+      loosePermissionNote,
+      ensureWriteAccess: ensureFolderWriteAccess,
       refreshRecordsFromHandles: timeReferenceWrite.refreshRecordsFromHandles,
       setChangedTimeReferences: next => { changedTimeReferences = next; },
       setState,
@@ -761,6 +771,7 @@
       selectedRecordKeys = new Set();
       changedTimeReferences = new Map();
       directoryHandle = null;
+      rootDirectoryHandles = [];
       els.applyBtn.disabled = true;
       els.undoBtn.disabled = true;
       els.previewBtn.disabled = true;
@@ -859,7 +870,10 @@
       videoSuffix: VIDEO_SUFFIX,
       metadataSuffix: METADATA_SUFFIX,
       parseMetadataImport,
-      setDirectoryHandle: handle => { directoryHandle = handle; },
+      setDirectoryHandle: handle => {
+        directoryHandle = handle;
+        if (!rootDirectoryHandles.includes(handle)) rootDirectoryHandles.push(handle);
+      },
       getRecords: () => records,
       pushRecord: record => records.push(record),
       clearAfterImportState: count => {

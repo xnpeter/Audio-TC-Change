@@ -14,6 +14,7 @@ import {
   verifyFpsMetadata,
   writeFpsMetadata,
 } from "./wave-fps-metadata.js";
+import { isLooseWritableRecord } from "./write-permission.js";
 
 function bytesEqual(a, b) {
   if (!a || !b || a.byteLength !== b.byteLength) return false;
@@ -37,6 +38,8 @@ export function createFpsWriteController({
   fpsSelectLabel,
   samplesToTimecode,
   showConfirmDialog,
+  loosePermissionNote,
+  ensureWriteAccess,
   refreshRecordsFromHandles,
   setChangedTimeReferences,
   setState,
@@ -256,11 +259,13 @@ export function createFpsWriteController({
           createAspeedCount ? `${createAspeedCount} 个写入 aSPEED` : "",
         ].filter(Boolean).join("，"),
         "TimeReference、音频采样率、音频内容和文件时长均保持不变。",
+        loosePermissionNote(writable.filter(isLooseWritableRecord).length),
       ].filter(Boolean).join("<br>"),
       confirmText: "写入帧率元数据",
       danger: true,
     });
     if (!confirmed) return;
+    await ensureWriteAccess();
 
     setState("FPS写入中", "warn");
     els.applyBtn.disabled = true;
@@ -329,6 +334,7 @@ export function createFpsWriteController({
     const batch = getLastUndoBatch();
     if (batch?.type !== "fps-metadata") throw new Error("没有可撤销的帧率元数据写入");
     const items = batch.items;
+    await ensureWriteAccess();
     setState("撤销FPS中", "warn");
     els.applyBtn.disabled = true;
     els.undoBtn.disabled = true;

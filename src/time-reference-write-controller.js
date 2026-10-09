@@ -18,6 +18,7 @@ import {
   recordKey,
   recordLabel,
 } from "./grouping.js";
+import { isLooseWritableRecord } from "./write-permission.js";
 
 export function createTimeReferenceWriteController({
   els,
@@ -42,6 +43,7 @@ export function createTimeReferenceWriteController({
   recordFps,
   samplesToTimecode,
   confirmWriteChanges,
+  ensureWriteAccess,
   setState,
   updateWriteProgress,
   log,
@@ -159,8 +161,11 @@ export function createTimeReferenceWriteController({
     if (!writableItems.length) throw new Error("没有可写入的 LTC 识别结果");
 
     const muteLtc = shouldMuteLtc?.() !== false;
-    const ok = await confirmWriteChanges(writableItems.length, muteLtc);
+    const ok = await confirmWriteChanges(writableItems.length, muteLtc, {
+      looseCount: writableItems.filter(({ record }) => isLooseWritableRecord(record)).length,
+    });
     if (!ok) return;
+    await ensureWriteAccess();
 
     setState("LTC写入中", "warn");
     els.writeLtcBtn.disabled = true;
@@ -270,8 +275,11 @@ export function createTimeReferenceWriteController({
     }
 
     // Mix of WAV + metadata: write WAV files, virtual-apply metadata
-    const ok = await confirmWriteChanges(wavPreviews.length);
+    const ok = await confirmWriteChanges(wavPreviews.length, false, {
+      looseCount: wavPreviews.filter(isLooseWritableRecord).length,
+    });
     if (!ok) return;
+    await ensureWriteAccess();
 
     const appliedPreviews = wavPreviews.slice();
     setState("写入中", "warn");
@@ -351,6 +359,7 @@ export function createTimeReferenceWriteController({
   async function undoLastWrite() {
     const lastUndoBatch = getLastUndoBatch();
     if (!lastUndoBatch) throw new Error("没有可撤销的写入记录");
+    await ensureWriteAccess();
 
     setState("撤销中", "warn");
     els.applyBtn.disabled = true;

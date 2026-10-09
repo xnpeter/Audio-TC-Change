@@ -2,20 +2,29 @@ import { combineTrackPlan } from "./wave-combine.js";
 import { shortGroupLabel } from "./grouping.js";
 
 export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
-  function confirmWriteChanges(count, includesLtcMute = false) {
+  function loosePermissionNote(looseCount) {
+    return looseCount > 1
+      ? `其中 ${looseCount} 个是单独拖入的文件，浏览器会对每个文件分别询问写入权限；改为拖入或选择所在文件夹只需授权一次。`
+      : "";
+  }
+
+  function confirmWriteChanges(count, includesLtcMute = false, { looseCount = 0 } = {}) {
     return showConfirmDialog({
       title: "确认写入文件？",
       danger: true,
       confirmText: "确认写入",
-      copy: includesLtcMute
-        ? [
-          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
-          "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
-        ].join("<br>")
-        : [
-          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
-          "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
-        ].join("<br>"),
+      copy: [
+        ...(includesLtcMute
+          ? [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
+            "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
+          ]
+          : [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
+            "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
+          ]),
+        loosePermissionNote(looseCount),
+      ].filter(Boolean).join("<br>"),
     });
   }
 
@@ -90,5 +99,6 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
     confirmLtcFpsMismatch,
     confirmMetadataFpsMismatch,
     confirmWriteChanges,
+    loosePermissionNote,
   };
 }

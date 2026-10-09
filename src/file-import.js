@@ -1,3 +1,5 @@
+import { isLooseWritableRecord } from "./write-permission.js";
+
 async function readFileAsText(handle) {
   const file = await handle.getFile();
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -115,9 +117,14 @@ export function createFileImportController({
       const takeText = takeGroupCount() ? `，识别到 ${takeGroupCount()} 个分轨 take` : "";
       parts.push(`${wavRecords.length} 个 WAV${takeText}`);
     }
-    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC`;
+    const looseCount = wavRecords.filter(isLooseWritableRecord).length;
+    const looseHint = looseCount > 1
+      ? `。其中 ${looseCount} 个 WAV 是单独拖入的，写入时浏览器会逐个询问权限，建议改为拖入或选择所在文件夹`
+      : "";
+    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC${looseHint}`;
     renderRows();
     log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${videoRecords.length} video, ${metaRecords.length} metadata)`);
+    if (looseCount > 1) log(`Permission NOTE: ${looseCount} loose WAV file(s) will each ask for write access`);
 
     if (newRecords.length) {
       const fpsMeta = detectedMetadataFps(newRecords);
