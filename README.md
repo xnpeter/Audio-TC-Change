@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v1.2.0-1b8f7b">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v1.2.1-1b8f7b">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -147,6 +147,17 @@ http://127.0.0.1:8765/
 ```
 
 Chrome 或 Edge 推荐使用，因为写回本地文件依赖 File System Access API。
+
+### 目录结构
+
+```text
+index.html                 页面入口
+src/                       应用模块（ES modules，无需构建）
+icons/                     标签页、PWA、iOS 主屏图标
+bwf-timecode-sw.js         离线缓存 service worker（需放在根目录）
+bwf-timecode.webmanifest   PWA 清单
+tools/fix_ixml_bom.js      命令行工具：批量检查/修复 iXML BOM
+```
 
 ### 建议流程
 
@@ -294,6 +305,17 @@ http://127.0.0.1:8765/
 ```
 
 Chrome or Edge is recommended because writing local files depends on the File System Access API.
+
+### Project Layout
+
+```text
+index.html                 App entry page
+src/                       App modules (plain ES modules, no build step)
+icons/                     Browser tab, PWA, and iOS home-screen icons
+bwf-timecode-sw.js         Offline service worker (must stay at the root)
+bwf-timecode.webmanifest   PWA manifest
+tools/fix_ixml_bom.js      CLI tool to scan/fix iXML BOM issues in bulk
+```
 
 ### Suggested Workflow
 

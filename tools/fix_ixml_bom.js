@@ -10,7 +10,7 @@ const reportPath = process.argv.includes("--report")
   : null;
 
 if (!root) {
-  console.error("Usage: node fix_ixml_bom.js <folder> [--apply] [--report report.json]");
+  console.error("Usage: node tools/fix_ixml_bom.js <folder> [--apply] [--report report.json]");
   process.exit(2);
 }
 

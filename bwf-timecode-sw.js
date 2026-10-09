@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v1.2.0";
+const CACHE_NAME = "bwf-timecode-batch-v1.2.1";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -36,11 +36,11 @@ const APP_ASSETS = [
   "./src/workspace-layout.js",
   "./src/write-permission.js",
   "./bwf-timecode.webmanifest",
-  "./bwf-timecode-icon.svg",
-  "./bwf-timecode-icon-192.png",
-  "./bwf-timecode-icon-512.png",
-  "./bwf-timecode-icon-maskable-512.png",
-  "./bwf-timecode-apple-touch-icon.png"
+  "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-maskable-512.png",
+  "./icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", event => {
