@@ -445,6 +445,31 @@ th {
 
 td { color: var(--ink-2); }
 
+th[data-sort] { padding: 0; }
+.th-sort {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  width: 100%;
+  height: auto;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.th-sort::after { content: "↕"; opacity: 0; font-size: 10px; transition: opacity 0.12s; }
+.th-sort:hover { color: var(--ink-2); background: none; }
+.th-sort:hover::after { opacity: 0.5; }
+th.sorted .th-sort { color: var(--accent); }
+th[aria-sort="ascending"] .th-sort::after { content: "↑"; opacity: 1; }
+th[aria-sort="descending"] .th-sort::after { content: "↓"; opacity: 1; }
+
 tbody tr[data-record-key],
 tbody tr[data-group-record-keys] { cursor: pointer; }
 

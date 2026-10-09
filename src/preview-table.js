@@ -82,10 +82,85 @@ export function createPreviewTableRenderer({
   }
 
   let lastSelectedKey = null;
+  let displayedRecords = [];
 
   function selectableRecords() {
-    return getRecords().filter(record => !record._meta);
+    return displayedRecords.filter(record => !record._meta);
   }
+
+  function seconds(samples, record) {
+    if (samples == null) return null;
+    return Number(samples) / (record.sampleRate || 48000);
+  }
+
+  const sortValues = {
+    name: record => `${record.name || ""}\u0000${recordLabel(record)}`,
+    format: record => (record.sampleRate || 0) * 1e4 + (record.bitsPerSample || 0) * 100 + (record.channels || 0),
+    fps: record => {
+      const { rate, drop } = recordFps(record) || {};
+      return rate ? Number(rate.n) / Number(rate.d) + (drop ? 0.001 : 0) : null;
+    },
+    start: record => seconds(record.oldTimeReference, record),
+    end: record => record.oldTimeReference == null || record.durationSamples == null
+      ? null
+      : seconds(BigInt(record.oldTimeReference) + BigInt(record.durationSamples), record),
+    timeReference: record => record.oldTimeReference == null ? null : Number(record.oldTimeReference),
+    ltc: record => {
+      const ltc = getLtcResults().get(recordKey(record));
+      return ltc?.timecode && ltc.newTimeReference != null ? seconds(ltc.newTimeReference, record) : null;
+    },
+    duration: record => seconds(record.durationSamples, record),
+  };
+
+  const SORT_STORAGE_KEY = "audioTc.tableSort";
+  let sortState = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) || "null");
+    if (saved && sortValues[saved.key] && (saved.dir === 1 || saved.dir === -1)) sortState = saved;
+  } catch {}
+
+  const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+  // Missing values (e.g. no LTC detected yet) stay at the bottom in both directions.
+  function compareValues(a, b, dir) {
+    if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+    const result = typeof a === "string" ? nameCollator.compare(a, b) : a - b;
+    return result * dir;
+  }
+
+  function sortedGroups(groups) {
+    const entries = Array.from(groups.entries());
+    if (!sortState) return entries;
+    const valueOf = sortValues[sortState.key];
+    const { dir } = sortState;
+    const sorted = entries.map(([key, groupRecords], index) => {
+      const ranked = groupRecords
+        .map((record, order) => ({ record, order, value: valueOf(record) }))
+        .sort((a, b) => compareValues(a.value, b.value, dir) || a.order - b.order);
+      return { key, index, records: ranked.map(item => item.record), lead: ranked[0]?.value ?? null };
+    });
+    sorted.sort((a, b) => compareValues(a.lead, b.lead, dir) || a.index - b.index);
+    return sorted.map(({ key, records }) => [key, records]);
+  }
+
+  function updateSortHeaders() {
+    els.previewTable.querySelectorAll("th[data-sort]").forEach(th => {
+      const active = sortState?.key === th.dataset.sort;
+      th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
+      th.classList.toggle("sorted", active);
+    });
+  }
+
+  els.previewTable.querySelector("thead")?.addEventListener("click", event => {
+    const th = event.target.closest("th[data-sort]");
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (sortState?.key !== key) sortState = { key, dir: 1 };
+    else if (sortState.dir === 1) sortState = { key, dir: -1 };
+    else sortState = null;
+    try { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sortState)); } catch {}
+    renderRows();
+  });
 
   function setGroupSelection(groupRecords, event) {
     if (!setSelectedRecordKeys) return;
@@ -176,7 +251,9 @@ export function createPreviewTableRenderer({
     const previewByName = new Map(previews.map(preview => [recordKey(preview), preview]));
     const isFpsMetadataPreview = previews.some(preview => preview.operation === "fps-metadata");
     const showLtc = Array.from(ltcResults.values()).some(result => result.status !== "idle");
-    const groups = recordsByGroup();
+    const groups = sortedGroups(recordsByGroup());
+    displayedRecords = groups.flatMap(([, groupRecords]) => groupRecords);
+    updateSortHeaders();
 
     for (const [key, groupRecords] of groups) {
       const isTrackGroup = groupRecords.length > 1 && groupRecords.every(isTakeTrack);
