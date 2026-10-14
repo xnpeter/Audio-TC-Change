@@ -13,6 +13,7 @@ export function toCsvValue(value) {
 export function resolveFpsLabel(fpsValue) {
   const fps = parseFps(fpsValue);
   const numeric = Number(fps.rate.n) / Number(fps.rate.d);
+  if (fps.drop) return `${numeric.toFixed(2)} DF`;
   return numeric.toFixed(3);
 }
 
