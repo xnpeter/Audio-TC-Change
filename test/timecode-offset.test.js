@@ -8,6 +8,8 @@ import {
   framesToSamples,
   framesToTimecode,
   mulFrac,
+  numericRateToFpsValue,
+  parseBextAspeed,
   parseFps,
   samplesForRate,
   samplesToTimecode,
@@ -42,6 +44,25 @@ test("29.97 and 59.94 one-frame offsets round instead of requiring integer sampl
   assertRoundTrip("00:00:00:01", "29.97");
   assertRoundTrip("00:00:00;01", "29.97df");
   assertRoundTrip("00:00:00:01", "59.94");
+});
+
+test("aSPEED 023.980-ND is recognized as 23.976", () => {
+  assert.equal(parseBextAspeed("aSPEED=023.980-ND").fpsValue, "23.976");
+  assert.equal(numericRateToFpsValue(23.98), "23.976");
+  assert.equal(numericRateToFpsValue(23.976), "23.976");
+  assert.equal(numericRateToFpsValue(24000 / 1001), "23.976");
+  assert.equal(numericRateToFpsValue(24), "24");
+  assert.equal(parseBextAspeed("aSPEED=024.000-ND").fpsValue, "24");
+});
+
+test("23.976 offsets at 44.1 kHz round to the nearest sample", () => {
+  const fps = parseFps("23.976");
+  assert.throws(() => samplesForRate(divFrac(frac(1n), fpsRate(fps)), 44100));
+  const oneFrame = assertRoundTrip("00:00:00:01", "23.976", 44100);
+  assert.notEqual(oneFrame.exact.d, 1n);
+  assert.equal(oneFrame.rounded, 1839n);
+  assertRoundTrip("01:00:00:00", "23.976", 44100);
+  assert.equal(framesToSamples(-1n, 44100, fps), -1839n);
 });
 
 test("one hour at 29.97 DF / 48 kHz is not an integer sample count", () => {

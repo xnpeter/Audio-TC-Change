@@ -331,9 +331,13 @@ export async function scanWave(fileHandle, meta = {}) {
   if (sampleRate === null || blockAlign === null) throw new Error(`${name}: 缺少 fmt chunk`);
   if (dataSize === null || dataOffset === null) throw new Error(`${name}: 缺少 data chunk`);
   if (dataSize % blockAlign !== 0) throw new Error(`${name}: data chunk 未按 block align 对齐`);
+  const ixmlReference = ixmlTimeReferenceValue(ixmlInfo);
   if (oldTimeReference === null) {
-    oldTimeReference = ixmlTimeReferenceValue(ixmlInfo) ?? 0n;
+    oldTimeReference = ixmlReference ?? 0n;
   }
+  const timeReferenceConflict = hasBext && ixmlReference !== null && ixmlReference !== oldTimeReference
+    ? { bext: oldTimeReference, ixml: ixmlReference }
+    : null;
 
   const ds64 = listed.ds64
     ? {
@@ -364,6 +368,7 @@ export async function scanWave(fileHandle, meta = {}) {
     bextInfo,
     timeReferenceOffset,
     oldTimeReference,
+    timeReferenceConflict,
     ixmlInfo,
     dataOffset,
     dataSize,
@@ -375,4 +380,10 @@ export async function scanWave(fileHandle, meta = {}) {
 export function ixmlTimeReferenceValue(ixmlInfo) {
   if (!ixmlInfo?.timestampHi || !ixmlInfo?.timestampLo) return null;
   return BigInt(ixmlInfo.timestampHi.value || "0") * 4294967296n + BigInt(ixmlInfo.timestampLo.value || "0");
+}
+
+export function describeTimeReferenceConflict(record) {
+  const conflict = record?.timeReferenceConflict;
+  if (!conflict) return "";
+  return `bext TimeReference ${conflict.bext} 与 iXML ${conflict.ixml} 不一致，显示和写入以 bext 为准`;
 }

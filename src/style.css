@@ -517,6 +517,8 @@ tbody tr.partial-selected-row td:first-child { box-shadow: inset 2px 0 0 rgba(53
 .value-cell { font-size: 12.5px; }
 .value-cell span { display: block; line-height: 1.35; }
 .value-cell.time-reference { font-size: 11.5px; color: var(--muted); }
+.value-cell.time-reference-conflict { color: var(--amber); }
+.conflict-note { display: block; margin-top: 2px; color: var(--amber); font-size: 11px; }
 .old-value {
   color: var(--muted);
   font-size: 11px;

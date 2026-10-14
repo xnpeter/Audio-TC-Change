@@ -1,3 +1,4 @@
+import { describeTimeReferenceConflict } from "./wave.js";
 import { isLooseWritableRecord } from "./write-permission.js";
 
 // Below this a few per-file permission prompts are tolerable, so the status-line hint is enough.
@@ -134,10 +135,17 @@ export function createFileImportController({
     const looseHint = looseCount > 1
       ? `。其中 ${looseCount} 个 WAV 是单独拖入的，写入时浏览器会逐个询问权限，建议改为拖入或选择所在文件夹`
       : "";
-    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC${looseHint}`;
+    const conflictRecords = wavRecords.filter(record => record.timeReferenceConflict);
+    const conflictNote = conflictRecords.length
+      ? `。${conflictRecords.length} 个 WAV 的 bext 与 iXML 时间戳不一致，显示和写入以 bext 为准`
+      : "";
+    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC${looseHint}${conflictNote}`;
     renderRows();
     log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${videoRecords.length} video, ${metaRecords.length} metadata)`);
     if (looseCount > 1) log(`Permission NOTE: ${looseCount} loose WAV file(s) will each ask for write access`);
+    for (const record of conflictRecords) {
+      log(`WARNING: ${record.name}: ${describeTimeReferenceConflict(record)}`);
+    }
 
     if (looseCount >= LOOSE_DIALOG_MIN && window.showDirectoryPicker && await confirmLooseFileImport(looseCount)) {
       let handle = null;

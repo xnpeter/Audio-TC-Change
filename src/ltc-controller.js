@@ -1,5 +1,7 @@
 import {
   fpsLabel,
+  framesToSamples,
+  normalizeTimeReference,
   parseFps,
 } from "./timecode.js";
 import { readDataView } from "./wave.js";
@@ -14,6 +16,107 @@ import {
   WorkerPool,
 } from "./ltc-worker.js";
 import { createLtcDecoder } from "./ltc-decoder.js";
+
+export const LTC_FULL_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+
+export function ltcWorkerReadRanges({
+  dataSize = 0,
+  blockAlign = 1,
+  sampleRate = 1,
+  durationSamples = null,
+  scanSeconds = null,
+  maxBytes = LTC_FULL_SCAN_MAX_BYTES,
+} = {}) {
+  const align = Math.max(1, Number(blockAlign) || 1);
+  const rate = Math.max(1, Number(sampleRate) || 1);
+  const bytesAvailable = Math.max(0, Number(dataSize) || 0);
+  let samplesAvailable = Math.floor(bytesAvailable / align);
+  if (durationSamples != null) {
+    const duration = Number(durationSamples);
+    if (Number.isFinite(duration) && duration >= 0) {
+      samplesAvailable = Math.min(samplesAvailable, Math.floor(duration));
+    }
+  }
+  const limitedSamples = scanSeconds == null
+    ? samplesAvailable
+    : Math.min(samplesAvailable, Math.max(rate * scanSeconds, rate));
+  if (limitedSamples <= 0) return [];
+
+  const chunkBytes = Math.max(align, Math.floor(Math.max(align, maxBytes) / align) * align);
+  const samplesPerChunk = Math.max(1, Math.floor(chunkBytes / align));
+  const wholeBytes = limitedSamples * align;
+  if (wholeBytes <= chunkBytes) {
+    return [{ startSample: 0, sampleCount: limitedSamples, byteOffset: 0, byteLength: wholeBytes }];
+  }
+
+  const overlapSamples = Math.min(samplesPerChunk - 1, Math.max(1, rate * 2));
+  const step = Math.max(1, samplesPerChunk - overlapSamples);
+  const ranges = [];
+  for (let start = 0; start < limitedSamples; start += step) {
+    const sampleCount = Math.min(samplesPerChunk, limitedSamples - start);
+    ranges.push({
+      startSample: start,
+      sampleCount,
+      byteOffset: start * align,
+      byteLength: sampleCount * align,
+    });
+    if (start + sampleCount >= limitedSamples) break;
+  }
+  return ranges;
+}
+
+export function shiftLtcDetection(item, startSample, sampleRate) {
+  if (!item || !startSample) return item;
+  const sampleOffset = (item.sampleOffset || 0) + startSample;
+  const newTimeReference = normalizeTimeReference(
+    framesToSamples(item.frames, sampleRate, item.fps) - BigInt(sampleOffset),
+    sampleRate,
+  );
+  return { ...item, sampleOffset, newTimeReference };
+}
+
+export function shiftLtcWorkerResult(result, startSample, sampleRate) {
+  if (!result || !startSample) return result;
+  return {
+    ...result,
+    best: shiftLtcDetection(result.best, startSample, sampleRate),
+    preferred: shiftLtcDetection(result.preferred, startSample, sampleRate),
+    results: (result.results || []).map(item => shiftLtcDetection(item, startSample, sampleRate)),
+  };
+}
+
+export function mergeLtcAutoResults(current, next, compare) {
+  if (!next) return current;
+  if (!current) return next;
+  const better = (left, right) => {
+    if (!left) return right;
+    if (!right) return left;
+    return compare(left, right) <= 0 ? left : right;
+  };
+  return {
+    best: better(current.best, next.best),
+    preferred: better(current.preferred, next.preferred),
+    results: [...(current.results || []), ...(next.results || [])],
+    rejectedChannels: [...(current.rejectedChannels || []), ...(next.rejectedChannels || [])],
+  };
+}
+
+export async function forEachLtcScanChunk(record, scanSeconds, visit, maxBytes = LTC_FULL_SCAN_MAX_BYTES) {
+  const ranges = ltcWorkerReadRanges({
+    dataSize: record.dataSize,
+    blockAlign: record.blockAlign,
+    sampleRate: record.sampleRate,
+    durationSamples: record.durationSamples,
+    scanSeconds,
+    maxBytes,
+  });
+  for (const range of ranges) {
+    const start = record.dataOffset + range.byteOffset;
+    const buffer = await record.file.slice(start, start + range.byteLength).arrayBuffer();
+    const stop = await visit({ ...range, buffer });
+    if (stop) return;
+  }
+}
 
 export function createLtcController({
   els,
@@ -82,35 +185,48 @@ export function createLtcController({
   }
 
   async function detectLtcAutoWorker(record, fps, scanSeconds = null, options = {}) {
-    const sampleLimit = scanSeconds == null
-      ? record.durationSamples
-      : BigInt(Math.max(record.sampleRate * scanSeconds, record.sampleRate));
-    const maxSamples = Number(record.durationSamples < sampleLimit ? record.durationSamples : sampleLimit);
-    const bytesToRead = Math.min(record.dataSize, maxSamples * record.blockAlign);
-    const buffer = await record.file.slice(record.dataOffset, record.dataOffset + bytesToRead).arrayBuffer();
     const preferredValue = fps.value || els.fpsInput.value;
     const values = [
       preferredValue,
       ...decoder.candidateFpsValues().filter(value => value !== preferredValue),
     ];
-    const result = await ltcWorkerPool.run({
-      buffer,
-      preferredValue,
-      values,
-      record: {
-        name: record.name,
-        sampleRate: record.sampleRate,
-        channels: record.channels,
-        bitsPerSample: record.bitsPerSample,
-        audioFormat: record.audioFormat,
-        isFloat: Boolean(record.isFloat || record.audioFormat === 3),
-        blockAlign: record.blockAlign,
-      },
-      allowSoftSync: options.allowSoftSync === true,
-    }, [buffer]);
-    const revived = reviveWorkerLtcResult(result);
-    if (revived) revived.scanSeconds = scanSeconds;
-    return revived;
+    const workerRecord = {
+      name: record.name,
+      sampleRate: record.sampleRate,
+      channels: record.channels,
+      bitsPerSample: record.bitsPerSample,
+      audioFormat: record.audioFormat,
+      isFloat: Boolean(record.isFloat || record.audioFormat === 3),
+      blockAlign: record.blockAlign,
+    };
+    let merged = null;
+    await forEachLtcScanChunk(record, scanSeconds, async ({ buffer, startSample }) => {
+      const result = await ltcWorkerPool.run({
+        buffer,
+        preferredValue,
+        values,
+        record: workerRecord,
+        allowSoftSync: options.allowSoftSync === true,
+      }, [buffer]);
+      const revived = shiftLtcWorkerResult(
+        reviveWorkerLtcResult(result),
+        startSample,
+        record.sampleRate,
+      );
+      merged = mergeLtcAutoResults(merged, revived, (left, right) => decoder.compareResults(left, right));
+      return Boolean(merged?.best && decoder.isHighQualityCandidate(merged.best));
+    });
+    if (!merged) {
+      return {
+        best: null,
+        preferred: null,
+        results: [],
+        rejectedChannels: [],
+        scanSeconds,
+      };
+    }
+    merged.scanSeconds = scanSeconds;
+    return merged;
   }
 
   function isHighQualityFastLtc(auto) {

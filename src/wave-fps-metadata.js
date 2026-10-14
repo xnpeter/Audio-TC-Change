@@ -318,6 +318,26 @@ async function writeIxmlFps(record, fpsValue, { createIxml = false } = {}) {
   return originalIxmlBytes;
 }
 
+function fpsUndoItem(record, {
+  originalIxmlBytes = null,
+  originalDescriptionBytes = null,
+  wroteIxml = false,
+  wroteAspeed = false,
+} = {}) {
+  return {
+    fileHandle: record.fileHandle,
+    name: record.name,
+    relativePath: record.relativePath,
+    parentPath: record.parentPath,
+    parentHandle: record.parentHandle,
+    originalIxmlBytes,
+    originalDescriptionBytes,
+    wroteIxml,
+    wroteAspeed,
+    oldTimeReference: record.oldTimeReference,
+  };
+}
+
 export async function writeFpsMetadata(record, fpsValue, plan = {}) {
   const {
     writeIxml = false,
@@ -330,26 +350,32 @@ export async function writeFpsMetadata(record, fpsValue, plan = {}) {
   }
 
   let originalDescriptionBytes = null;
-  let originalIxmlBytes = null;
+  let wroteAspeed = false;
   if (writeAspeed) {
     originalDescriptionBytes = await writeBextAspeed(record, fpsValue, { create: createAspeed });
+    wroteAspeed = true;
   }
+  let originalIxmlBytes = null;
   if (writeIxml) {
-    originalIxmlBytes = await writeIxmlFps(record, fpsValue, { createIxml });
+    try {
+      originalIxmlBytes = await writeIxmlFps(record, fpsValue, { createIxml });
+    } catch (error) {
+      if (wroteAspeed) {
+        error.fpsUndo = fpsUndoItem(record, {
+          originalDescriptionBytes,
+          wroteAspeed: true,
+        });
+      }
+      throw error;
+    }
   }
 
-  return {
-    fileHandle: record.fileHandle,
-    name: record.name,
-    relativePath: record.relativePath,
-    parentPath: record.parentPath,
-    parentHandle: record.parentHandle,
+  return fpsUndoItem(record, {
     originalIxmlBytes,
     originalDescriptionBytes,
     wroteIxml: writeIxml,
-    wroteAspeed: writeAspeed,
-    oldTimeReference: record.oldTimeReference,
-  };
+    wroteAspeed,
+  });
 }
 
 async function restoreBextDescription(record, originalDescriptionBytes) {

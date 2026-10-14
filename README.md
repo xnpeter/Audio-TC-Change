@@ -3,7 +3,7 @@
 <p align="center">
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-8bd11f?labelColor=555"></a>
   <a href="https://github.com/xnpeter/Audio-TC-Change/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/xnpeter/Audio-TC-Change?style=social"></a>
-  <img alt="Current release" src="https://img.shields.io/badge/release-v1.2.2-1b8f7b">
+  <img alt="Current release" src="https://img.shields.io/badge/release-v1.2.3-1b8f7b">
 </p>
 
 <h2 align="center">把跑偏的声音时码拉回正轨</h2>
@@ -90,9 +90,10 @@ WAV/BWF 文件的起始时码本质上不是一串 `HH:MM:SS:FF` 字符，而是
 
 Audio TC Change 会：
 
-- 把用户输入的时间码或偏移量换算成精确的 sample count。
+- 把用户输入的时间码或偏移量换算成 sample count。23.976 在 44.1 kHz 等无法整除的组合按最近的采样取整，和 29.97 在 48 kHz 一样。
 - 写回 BWF 的 `bext.TimeReference`。
 - 如果文件原本存在 iXML 时间戳，也同步更新 iXML 里的 `TIMESTAMP_SAMPLES_SINCE_MIDNIGHT`。
+- 读取时如果 bext 和 iXML 时间戳不一致（包括 bext 为 0），会明确警告，显示和写入仍以 bext 为准。
 - 写入后验证 bext 和 iXML 是否一致。
 
 工具修改的是 WAV 文件头 metadata，不重编码音频，不改变声音内容，也不改变文件时长。视频文件仅读取时码信息，不直接修改视频文件本身，通过导出元数据（CSV/ALE）的方式传递时码到剪辑软件。
@@ -250,9 +251,10 @@ WAV/BWF start timecode is not stored as a `HH:MM:SS:FF` string. It is stored as 
 
 Audio TC Change:
 
-- Converts user-entered timecode or offset values into an exact sample count.
+- Converts user-entered timecode or offset values into a sample count. Rates that do not land on an integer sample, including 23.976 at 44.1 kHz, use the same nearest-sample rounding as 29.97 at 48 kHz.
 - Writes the value to BWF `bext.TimeReference`.
 - If iXML timestamp fields already exist, updates `TIMESTAMP_SAMPLES_SINCE_MIDNIGHT` as well.
+- Warns when bext and iXML timestamps disagree, including when bext is 0. Display and later writes keep bext as the source of truth.
 - Verifies that bext and iXML agree after writing.
 
 The tool changes WAV file header metadata only. It does not re-encode audio, change the sound content, or change file duration. Video files are read-only — timecode is exported as metadata (CSV/ALE) for use in editing software.

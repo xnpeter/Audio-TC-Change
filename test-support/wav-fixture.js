@@ -40,24 +40,35 @@ function dataChunk(samples = 64) {
   return chunk("data", payload);
 }
 
-function bextChunk(timeReference = 0n) {
+function bextChunk(timeReference = 0n, description = "") {
   const data = new Uint8Array(602);
   const view = new DataView(data.buffer);
+  const text = ascii(description).subarray(0, 255);
+  data.set(text, 0);
   view.setBigUint64(338, timeReference, true);
   view.setUint16(346, 1, true);
   return chunk("bext", data);
 }
 
-function ixmlChunk(timeReference = 0n) {
+function ixmlChunk(timeReference = 0n, payload = null) {
+  if (payload) return chunk("iXML", payload);
   const lo = timeReference.toString().padStart(10, "0");
   const xml = `<?xml version="1.0" encoding="UTF-8"?><BWFXML><SPEED><TIMESTAMP_SAMPLE_RATE>48000</TIMESTAMP_SAMPLE_RATE><TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI>0</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI><TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO>${lo}</TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO></SPEED></BWFXML>`;
   return chunk("iXML", ascii(xml));
 }
 
-export function wavBytes({ bext = false, ixml = false, timeReference = 0n, samples = 64 } = {}) {
+export function wavBytes({
+  bext = false,
+  ixml = false,
+  timeReference = 0n,
+  ixmlTimeReference = null,
+  samples = 64,
+  bextDescription = "",
+  ixmlPayload = null,
+} = {}) {
   const chunks = [fmtChunk()];
-  if (bext) chunks.push(bextChunk(timeReference));
-  if (ixml) chunks.push(ixmlChunk(timeReference));
+  if (bext) chunks.push(bextChunk(timeReference, bextDescription));
+  if (ixml) chunks.push(ixmlChunk(ixmlTimeReference ?? timeReference, ixmlPayload));
   chunks.push(dataChunk(samples));
   const body = concat(chunks);
   const out = new Uint8Array(12 + body.length);

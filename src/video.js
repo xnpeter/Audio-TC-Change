@@ -75,6 +75,29 @@ function audioTracksFromMetadata(containerMeta) {
   );
 }
 
+export function containerAudioSampleRate(containerMeta) {
+  const tracks = containerMeta?.tracks || [];
+  const audio = tracks.find(track => track.handlerType === "soun" && Number(track.audioSampleRate) > 0)
+    || tracks.find(track => Number(track.audioSampleRate) > 0);
+  const rate = Math.round(Number(audio?.audioSampleRate) || 0);
+  return rate > 0 ? rate : null;
+}
+
+export function videoImportNeedsAudioDecode(containerMeta) {
+  if (containerMeta?.startTc) return false;
+  return Boolean(containerMeta?.audioCodec);
+}
+
+export function assertWebAudioSampleRate(fileName, decodedRate, originalSampleRate) {
+  if (!originalSampleRate) {
+    throw new Error(`${fileName}: 无法确认原始采样率，已拒绝 Web Audio 解码，避免 LTC 被设备采样率重定`);
+  }
+  if (decodedRate !== originalSampleRate) {
+    throw new Error(`${fileName}: Web Audio 将音轨解成 ${decodedRate} Hz，与容器原始 ${originalSampleRate} Hz 不一致，已拒绝重定 LTC 采样率`);
+  }
+  return originalSampleRate;
+}
+
 function chunkSampleEntry(stsc, chunkIndex) {
   if (!stsc?.length) return null;
   const oneBased = chunkIndex + 1;
@@ -222,29 +245,46 @@ export async function scanVideo(fileHandle, meta = {}) {
   const elementMeta = elementResult.status === "fulfilled" ? elementResult.value : {};
   const containerOk = containerResult.status === "fulfilled";
   const containerMeta = containerOk ? containerResult.value : {};
-  const shouldDecodeAudio = containerOk && Boolean(containerMeta.audioCodec);
-  const audioResult = shouldDecodeAudio
-    ? await decodeMovPcmAudio(sourceFile, containerMeta)
-      .catch(() => decodeVideoAudio(sourceFile).then(audioBuffer => ({
-        interleaved: interleaveAudioBuffer(audioBuffer),
-        sampleRate: audioBuffer.sampleRate,
-        channels: audioBuffer.numberOfChannels,
-        sourceBitsPerSample: 32,
-        source: "Web Audio",
-      })))
-      .then(
-        value => ({ status: "fulfilled", value }),
-        reason => ({ status: "rejected", reason })
-      )
-    : { status: "rejected", reason: containerOk
-      ? new Error(`${sourceFile.name}: 未检测到音轨`)
-      : new Error(`${sourceFile.name}: 无法解析视频容器，跳过音轨解码`) };
+  const originalSampleRate = containerOk ? containerAudioSampleRate(containerMeta) : null;
+  const shouldDecodeAudio = containerOk && videoImportNeedsAudioDecode(containerMeta);
+  let audioResult;
+  if (!shouldDecodeAudio) {
+    audioResult = {
+      status: "rejected",
+      reason: !containerOk
+        ? new Error(`${sourceFile.name}: 无法解析视频容器，跳过音轨解码`)
+        : containerMeta.startTc
+          ? null
+          : new Error(`${sourceFile.name}: 未检测到音轨`),
+    };
+  } else {
+    try {
+      audioResult = { status: "fulfilled", value: await decodeMovPcmAudio(sourceFile, containerMeta) };
+    } catch {
+      try {
+        const audioBuffer = await decodeVideoAudio(sourceFile);
+        assertWebAudioSampleRate(sourceFile.name, audioBuffer.sampleRate, originalSampleRate);
+        audioResult = {
+          status: "fulfilled",
+          value: {
+            interleaved: interleaveAudioBuffer(audioBuffer),
+            sampleRate: originalSampleRate,
+            channels: audioBuffer.numberOfChannels,
+            sourceBitsPerSample: 32,
+            source: "Web Audio",
+          },
+        };
+      } catch (error) {
+        audioResult = { status: "rejected", reason: error };
+      }
+    }
+  }
   const decodedAudio = audioResult.status === "fulfilled" ? audioResult.value : null;
   const hasDecodedAudio = Boolean(decodedAudio?.channels && decodedAudio?.interleaved?.length);
   const interleaved = hasDecodedAudio ? decodedAudio.interleaved : new Float32Array();
   const pcmBlob = new Blob([interleaved.buffer], { type: "application/octet-stream" });
   const channels = hasDecodedAudio ? decodedAudio.channels : 0;
-  const sampleRate = hasDecodedAudio ? decodedAudio.sampleRate : 48000;
+  const sampleRate = hasDecodedAudio ? decodedAudio.sampleRate : (originalSampleRate || 48000);
   const bitsPerSample = 32;
   const blockAlign = channels ? channels * (bitsPerSample / 8) : 0;
   const width = containerMeta.width || elementMeta.width || 0;
@@ -294,7 +334,10 @@ export async function scanVideo(fileHandle, meta = {}) {
       dataLevel: "Auto",
       dateModified: sourceFile.lastModified ? new Date(sourceFile.lastModified).toLocaleString() : "",
       durationSeconds,
-      audioDecodeError: audioResult.status === "rejected" ? audioResult.reason?.message || String(audioResult.reason) : "",
+      audioDecodeError: audioResult.status === "rejected" && audioResult.reason
+        ? audioResult.reason.message || String(audioResult.reason)
+        : "",
+      audioDecodeSkipped: Boolean(containerMeta.startTc),
     },
   };
 }

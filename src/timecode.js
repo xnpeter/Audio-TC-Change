@@ -135,7 +135,9 @@ export function numericRateToFpsValue(numeric, drop = false) {
   if (Math.abs(numeric - 96) < 0.0002) return "96";
   if (Math.abs(numeric - 100) < 0.0002) return "100";
   if (Math.abs(numeric - 120) < 0.0002) return "120";
-  if (Math.abs(numeric - 24000 / 1001) < 0.0002) return "23.976";
+  // 023.980 is the 3-decimal aSPEED spelling of 23.976 (24000/1001). 0.005 covers that
+  // rounding without reaching 24.
+  if (Math.abs(numeric - 24000 / 1001) < 0.0002 || Math.abs(numeric - 23.98) <= 0.005) return "23.976";
   if (Math.abs(numeric - 30000 / 1001) < 0.0002) return drop ? "29.97df" : "29.97";
   if (Math.abs(numeric - 60000 / 1001) < 0.0002) return drop ? "59.94df" : "59.94";
   if (Math.abs(numeric - 120000 / 1001) < 0.0002) return drop ? "119.88df" : "119.88";
