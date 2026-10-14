@@ -293,8 +293,10 @@ export async function writeTimeReference(preview, value, writable = null) {
       await target.write({ type: "write", position: record.timeReferenceOffset, data: patch });
       await writeIxmlTimeReference(record, value, target);
     }
-  } finally {
     if (ownWritable) await target.close();
+  } catch (error) {
+    if (ownWritable) await target.abort().catch(() => {});
+    throw error;
   }
 }
 

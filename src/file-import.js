@@ -54,6 +54,7 @@ export function createFileImportController({
   setState,
   log,
   guarded,
+  getLastUndoBatch = () => null,
 }) {
   async function addDirectory(handle, basePath = handle.name) {
     const entries = [];
@@ -114,7 +115,7 @@ export function createFileImportController({
     const ltcRecords = newRecords.filter(r => !r._meta);
     clearAfterImportState(count);
     refreshTakeGroups();
-    els.undoBtn.disabled = true;
+    els.undoBtn.disabled = !getLastUndoBatch();
     els.previewBtn.disabled = false;
     els.extractLtcBtn.disabled = ltcRecords.length === 0;
     if (els.extractLtcFallbackBtn) els.extractLtcFallbackBtn.disabled = true;

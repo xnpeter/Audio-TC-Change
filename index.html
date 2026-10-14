@@ -885,11 +885,11 @@
       },
       confirmLooseFileImport,
       clearAfterImportState: count => {
-        lastUndoBatch = null;
         ltcResults = new Map();
         selectedRecordKeys = new Set();
         if (count === 0) { changedTimeReferences = new Map(); combinedPolyKeys = new Set(); }
       },
+      getLastUndoBatch: () => lastUndoBatch,
       refreshTakeGroups,
       takeGroupCount: () => takeGroupKeys.size,
       combineEligibleGroups,

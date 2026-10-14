@@ -1,8 +1,8 @@
 import {
   fpsLabel,
+  framesToSamples,
   normalizeTimeReference,
   parseFps,
-  samplesForRate,
 } from "./timecode.js";
 import { scanWave } from "./wave.js";
 import { muteLtcChannel as muteLtcChannelAudio } from "./wave-audio.js";
@@ -49,6 +49,19 @@ export function createTimeReferenceWriteController({
   log,
   renderRows,
 }) {
+  function timeReferenceUndoEntry(record) {
+    return {
+      fileHandle: record.fileHandle,
+      name: record.name,
+      relativePath: record.relativePath,
+      parentPath: record.parentPath,
+      sampleRate: record.sampleRate,
+      timeReferenceOffset: record.timeReferenceOffset,
+      oldTimeReference: record.oldTimeReference,
+      ixmlInfo: record.ixmlInfo,
+    };
+  }
+
   async function refreshRecordsFromHandles() {
     const current = getRecords();
     const refreshed = await Promise.all(current.map(record => {
@@ -82,7 +95,7 @@ export function createTimeReferenceWriteController({
       const fps = parseFps(fpsValue);
       const offset = offsetInput.parseOffset(els.offsetInput.value, fps);
       if (!firstOffset) firstOffset = offset;
-      const sampleOffset = samplesForRate(offset, record.sampleRate);
+      const sampleOffset = framesToSamples(offset.frames, record.sampleRate, fps);
       const newTimeReference = normalizeTimeReference(record.oldTimeReference + sampleOffset, record.sampleRate);
       const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps, { wrapDay: true });
       const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps, { wrapDay: true });
@@ -176,16 +189,7 @@ export function createTimeReferenceWriteController({
     updateWriteProgress("正在写入 LTC…", "", 0, writableItems.length);
     els.progressOverlay.classList.add("show");
 
-    const undoBatch = writableItems.map(({ record }) => ({
-      fileHandle: record.fileHandle,
-      name: record.name,
-      relativePath: record.relativePath,
-      parentPath: record.parentPath,
-      sampleRate: record.sampleRate,
-      timeReferenceOffset: record.timeReferenceOffset,
-      oldTimeReference: record.oldTimeReference,
-      ixmlInfo: record.ixmlInfo,
-    }));
+    const undoBatch = [];
 
     try {
       for (let i = 0; i < writableItems.length; i++) {
@@ -193,6 +197,8 @@ export function createTimeReferenceWriteController({
         const isSource = recordKey(record) === recordKey(ltc.sourceRecord);
         updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
         await writeTimeReference(record, ltc.newTimeReference);
+        undoBatch.push(timeReferenceUndoEntry(record));
+        setLastUndoBatch(undoBatch);
         if (isSource && muteLtc) {
           const freshForMute = await scanWave(record.fileHandle, {
             relativePath: record.relativePath,
@@ -202,8 +208,10 @@ export function createTimeReferenceWriteController({
           const writable = await record.fileHandle.createWritable({ keepExistingData: true });
           try {
             await muteLtcChannel(freshForMute, ltc.channelIndex, writable, i + 0.2, writableItems.length);
-          } finally {
             await writable.close();
+          } catch (error) {
+            await writable.abort().catch(() => {});
+            throw error;
           }
         }
         ltc.ok = false;
@@ -286,16 +294,7 @@ export function createTimeReferenceWriteController({
     els.applyBtn.disabled = true;
     els.undoBtn.disabled = true;
     els.statusLine.textContent = "Writing...";
-    const undoBatch = appliedPreviews.map(preview => ({
-      fileHandle: preview.fileHandle,
-      name: preview.name,
-      relativePath: preview.relativePath,
-      parentPath: preview.parentPath,
-      sampleRate: preview.sampleRate,
-      timeReferenceOffset: preview.timeReferenceOffset,
-      oldTimeReference: preview.oldTimeReference,
-      ixmlInfo: preview.ixmlInfo,
-    }));
+    const undoBatch = [];
 
     const total = appliedPreviews.length + metaPreviews.length;
     updateWriteProgress("正在写入…", "", 0, total);
@@ -306,6 +305,8 @@ export function createTimeReferenceWriteController({
         const preview = appliedPreviews[i];
         updateWriteProgress("正在写入…", preview.name, i, total);
         await writeTimeReference(preview, preview.newTimeReference);
+        undoBatch.push(timeReferenceUndoEntry(preview));
+        setLastUndoBatch(undoBatch);
         updateWriteProgress("正在写入…", preview.name, i + 1, total);
       }
 
