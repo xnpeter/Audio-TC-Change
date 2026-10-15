@@ -1,0 +1,9 @@
+# Publish only the browser app, never local media, tests, or development files.
+*
+!index.html
+!bwf-timecode-sw.js
+!bwf-timecode.webmanifest
+!src/
+!src/**
+!icons/
+!icons/**
