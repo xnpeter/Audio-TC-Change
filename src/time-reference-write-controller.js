@@ -1,8 +1,8 @@
 import {
   fpsLabel,
+  framesToSamples,
   normalizeTimeReference,
   parseFps,
-  samplesForRate,
 } from "./timecode.js";
 import { scanWave } from "./wave.js";
 import { muteLtcChannel as muteLtcChannelAudio } from "./wave-audio.js";
@@ -18,6 +18,7 @@ import {
   recordKey,
   recordLabel,
 } from "./grouping.js";
+import { isLooseWritableRecord } from "./write-permission.js";
 
 export function createTimeReferenceWriteController({
   els,
@@ -42,15 +43,29 @@ export function createTimeReferenceWriteController({
   recordFps,
   samplesToTimecode,
   confirmWriteChanges,
+  ensureWriteAccess,
   setState,
   updateWriteProgress,
   log,
   renderRows,
 }) {
+  function timeReferenceUndoEntry(record) {
+    return {
+      fileHandle: record.fileHandle,
+      name: record.name,
+      relativePath: record.relativePath,
+      parentPath: record.parentPath,
+      sampleRate: record.sampleRate,
+      timeReferenceOffset: record.timeReferenceOffset,
+      oldTimeReference: record.oldTimeReference,
+      ixmlInfo: record.ixmlInfo,
+    };
+  }
+
   async function refreshRecordsFromHandles() {
     const current = getRecords();
     const refreshed = await Promise.all(current.map(record => {
-      if (record._meta) return record;
+      if (record._meta || record._video) return record;
       return scanWave(record.fileHandle, {
         relativePath: record.relativePath,
         parentPath: record.parentPath,
@@ -80,7 +95,7 @@ export function createTimeReferenceWriteController({
       const fps = parseFps(fpsValue);
       const offset = offsetInput.parseOffset(els.offsetInput.value, fps);
       if (!firstOffset) firstOffset = offset;
-      const sampleOffset = samplesForRate(offset, record.sampleRate);
+      const sampleOffset = framesToSamples(offset.frames, record.sampleRate, fps);
       const newTimeReference = normalizeTimeReference(record.oldTimeReference + sampleOffset, record.sampleRate);
       const oldStartTc = samplesToTimecode(record.oldTimeReference, record.sampleRate, fps, { wrapDay: true });
       const newStartTc = samplesToTimecode(newTimeReference, record.sampleRate, fps, { wrapDay: true });
@@ -159,8 +174,11 @@ export function createTimeReferenceWriteController({
     if (!writableItems.length) throw new Error("没有可写入的 LTC 识别结果");
 
     const muteLtc = shouldMuteLtc?.() !== false;
-    const ok = await confirmWriteChanges(writableItems.length, muteLtc);
+    const ok = await confirmWriteChanges(writableItems.length, muteLtc, {
+      looseCount: writableItems.filter(({ record }) => isLooseWritableRecord(record)).length,
+    });
     if (!ok) return;
+    await ensureWriteAccess();
 
     setState("LTC写入中", "warn");
     els.writeLtcBtn.disabled = true;
@@ -171,16 +189,7 @@ export function createTimeReferenceWriteController({
     updateWriteProgress("正在写入 LTC…", "", 0, writableItems.length);
     els.progressOverlay.classList.add("show");
 
-    const undoBatch = writableItems.map(({ record }) => ({
-      fileHandle: record.fileHandle,
-      name: record.name,
-      relativePath: record.relativePath,
-      parentPath: record.parentPath,
-      sampleRate: record.sampleRate,
-      timeReferenceOffset: record.timeReferenceOffset,
-      oldTimeReference: record.oldTimeReference,
-      ixmlInfo: record.ixmlInfo,
-    }));
+    const undoBatch = [];
 
     try {
       for (let i = 0; i < writableItems.length; i++) {
@@ -188,6 +197,8 @@ export function createTimeReferenceWriteController({
         const isSource = recordKey(record) === recordKey(ltc.sourceRecord);
         updateWriteProgress("正在写入 LTC…", recordLabel(record), i, writableItems.length);
         await writeTimeReference(record, ltc.newTimeReference);
+        undoBatch.push(timeReferenceUndoEntry(record));
+        setLastUndoBatch(undoBatch);
         if (isSource && muteLtc) {
           const freshForMute = await scanWave(record.fileHandle, {
             relativePath: record.relativePath,
@@ -197,8 +208,10 @@ export function createTimeReferenceWriteController({
           const writable = await record.fileHandle.createWritable({ keepExistingData: true });
           try {
             await muteLtcChannel(freshForMute, ltc.channelIndex, writable, i + 0.2, writableItems.length);
-          } finally {
             await writable.close();
+          } catch (error) {
+            await writable.abort().catch(() => {});
+            throw error;
           }
         }
         ltc.ok = false;
@@ -270,24 +283,18 @@ export function createTimeReferenceWriteController({
     }
 
     // Mix of WAV + metadata: write WAV files, virtual-apply metadata
-    const ok = await confirmWriteChanges(wavPreviews.length);
+    const ok = await confirmWriteChanges(wavPreviews.length, false, {
+      looseCount: wavPreviews.filter(isLooseWritableRecord).length,
+    });
     if (!ok) return;
+    await ensureWriteAccess();
 
     const appliedPreviews = wavPreviews.slice();
     setState("写入中", "warn");
     els.applyBtn.disabled = true;
     els.undoBtn.disabled = true;
     els.statusLine.textContent = "Writing...";
-    const undoBatch = appliedPreviews.map(preview => ({
-      fileHandle: preview.fileHandle,
-      name: preview.name,
-      relativePath: preview.relativePath,
-      parentPath: preview.parentPath,
-      sampleRate: preview.sampleRate,
-      timeReferenceOffset: preview.timeReferenceOffset,
-      oldTimeReference: preview.oldTimeReference,
-      ixmlInfo: preview.ixmlInfo,
-    }));
+    const undoBatch = [];
 
     const total = appliedPreviews.length + metaPreviews.length;
     updateWriteProgress("正在写入…", "", 0, total);
@@ -298,6 +305,8 @@ export function createTimeReferenceWriteController({
         const preview = appliedPreviews[i];
         updateWriteProgress("正在写入…", preview.name, i, total);
         await writeTimeReference(preview, preview.newTimeReference);
+        undoBatch.push(timeReferenceUndoEntry(preview));
+        setLastUndoBatch(undoBatch);
         updateWriteProgress("正在写入…", preview.name, i + 1, total);
       }
 
@@ -351,6 +360,7 @@ export function createTimeReferenceWriteController({
   async function undoLastWrite() {
     const lastUndoBatch = getLastUndoBatch();
     if (!lastUndoBatch) throw new Error("没有可撤销的写入记录");
+    await ensureWriteAccess();
 
     setState("撤销中", "warn");
     els.applyBtn.disabled = true;

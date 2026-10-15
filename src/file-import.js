@@ -1,3 +1,13 @@
+import { isLooseWritableRecord } from "./write-permission.js";
+
+// Below this a few per-file permission prompts are tolerable, so the status-line hint is enough.
+const LOOSE_DIALOG_MIN = 5;
+
+// Recorder cards formatted as exFAT/FAT collect macOS "._*" sidecars, .Trashes, .Spotlight-V100, etc.
+function isHiddenName(name) {
+  return String(name || "").startsWith(".");
+}
+
 async function readFileAsText(handle) {
   const file = await handle.getFile();
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -28,6 +38,8 @@ export function createFileImportController({
   setDirectoryHandle,
   getRecords,
   pushRecord,
+  discardRecords,
+  confirmLooseFileImport,
   clearAfterImportState,
   refreshTakeGroups,
   takeGroupCount,
@@ -42,10 +54,13 @@ export function createFileImportController({
   setState,
   log,
   guarded,
+  getLastUndoBatch = () => null,
 }) {
   async function addDirectory(handle, basePath = handle.name) {
     const entries = [];
-    for await (const entry of handle.values()) entries.push(entry);
+    for await (const entry of handle.values()) {
+      if (!isHiddenName(entry.name)) entries.push(entry);
+    }
     entries.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
       return a.name.localeCompare(b.name);
@@ -57,12 +72,16 @@ export function createFileImportController({
         await addDirectory(entry, relativePath);
       } else if (entry.kind === "file") {
         if (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name)) {
-          const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
-          pushRecord(await scanner(entry, {
-            relativePath,
-            parentPath: basePath,
-            parentHandle: handle,
-          }));
+          try {
+            const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+            pushRecord(await scanner(entry, {
+              relativePath,
+              parentPath: basePath,
+              parentHandle: handle,
+            }));
+          } catch (error) {
+            log(`ERROR: ${error.message}`);
+          }
         } else if (metadataSuffix && metadataSuffix.test(entry.name)) {
           const text = await readFileAsText(entry);
           const metaRecords = parseMetadataImport(text, entry.name);
@@ -96,7 +115,7 @@ export function createFileImportController({
     const ltcRecords = newRecords.filter(r => !r._meta);
     clearAfterImportState(count);
     refreshTakeGroups();
-    els.undoBtn.disabled = true;
+    els.undoBtn.disabled = !getLastUndoBatch();
     els.previewBtn.disabled = false;
     els.extractLtcBtn.disabled = ltcRecords.length === 0;
     if (els.extractLtcFallbackBtn) els.extractLtcFallbackBtn.disabled = true;
@@ -111,9 +130,36 @@ export function createFileImportController({
       const takeText = takeGroupCount() ? `，识别到 ${takeGroupCount()} 个分轨 take` : "";
       parts.push(`${wavRecords.length} 个 WAV${takeText}`);
     }
-    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC`;
+    const looseCount = wavRecords.filter(isLooseWritableRecord).length;
+    const looseHint = looseCount > 1
+      ? `。其中 ${looseCount} 个 WAV 是单独拖入的，写入时浏览器会逐个询问权限，建议改为拖入或选择所在文件夹`
+      : "";
+    els.statusLine.textContent = `已载入 ${parts.join(" + ")}；可偏移预览或从音轨提取 LTC${looseHint}`;
     renderRows();
     log(`${sourceLabel}: ${newRecords.length} file(s) (${wavRecords.length} WAV, ${videoRecords.length} video, ${metaRecords.length} metadata)`);
+    if (looseCount > 1) log(`Permission NOTE: ${looseCount} loose WAV file(s) will each ask for write access`);
+
+    if (looseCount >= LOOSE_DIALOG_MIN && window.showDirectoryPicker && await confirmLooseFileImport(looseCount)) {
+      let handle = null;
+      try {
+        handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      } catch (error) {
+        if (error.name !== "AbortError") throw error;
+        log("Folder pick cancelled; keeping loose files");
+      }
+      if (handle) {
+        discardRecords(wavRecords.filter(isLooseWritableRecord));
+        await addHandle(handle);
+        if (getRecords().length > count) {
+          await finishImport(count, "Selected");
+        } else {
+          refreshTakeGroups();
+          renderRows();
+          els.statusLine.textContent = `文件夹“${handle.name}”里没有可导入的音频或视频`;
+        }
+        return;
+      }
+    }
 
     if (newRecords.length) {
       const fpsMeta = detectedMetadataFps(newRecords);
@@ -147,7 +193,7 @@ export function createFileImportController({
       while (true) {
         const batch = await readEntryBatch(reader);
         if (!batch.length) break;
-        entries.push(...batch);
+        entries.push(...batch.filter(child => !isHiddenName(child.name)));
       }
       entries.sort((a, b) => {
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
@@ -157,17 +203,21 @@ export function createFileImportController({
         await addEntry(child, `${basePath}/${child.name}`);
       }
     } else if (entry.isFile && (wavSuffix.test(entry.name) || videoSuffix?.test(entry.name))) {
-      const file = await entryFile(entry);
-      const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
-      pushRecord(await scanner({
-        kind: "file",
-        name: entry.name,
-        getFile: async () => file,
-      }, {
-        relativePath: basePath,
-        parentPath: basePath.split("/").slice(0, -1).join("/"),
-        parentHandle: null,
-      }));
+      try {
+        const file = await entryFile(entry);
+        const scanner = wavSuffix.test(entry.name) ? scanWave : scanVideo;
+        pushRecord(await scanner({
+          kind: "file",
+          name: entry.name,
+          getFile: async () => file,
+        }, {
+          relativePath: basePath,
+          parentPath: basePath.split("/").slice(0, -1).join("/"),
+          parentHandle: null,
+        }));
+      } catch (error) {
+        log(`ERROR: ${error.message}`);
+      }
     } else if (entry.isFile && metadataSuffix && metadataSuffix.test(entry.name)) {
       const file = await entryFile(entry);
       const buf = new Uint8Array(await file.arrayBuffer());

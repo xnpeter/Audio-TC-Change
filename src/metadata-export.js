@@ -13,6 +13,7 @@ export function toCsvValue(value) {
 export function resolveFpsLabel(fpsValue) {
   const fps = parseFps(fpsValue);
   const numeric = Number(fps.rate.n) / Number(fps.rate.d);
+  if (fps.drop) return `${numeric.toFixed(2)} DF`;
   return numeric.toFixed(3);
 }
 
@@ -22,8 +23,10 @@ export function aleFpsLabel(fpsValue) {
 }
 
 export function audioCodecLabel(record) {
-  if (record.audioFormat === 3) return "IEEE Float";
-  if (record.audioFormat === 1) return "Linear PCM";
+  if (record.isFloat || record.audioFormat === 3) {
+    return record.bitsPerSample === 64 ? "IEEE Float 64" : "IEEE Float";
+  }
+  if (record.audioFormat === 1 || record.audioFormat === 65534) return "Linear PCM";
   return `WAVE format ${record.audioFormat}`;
 }
 

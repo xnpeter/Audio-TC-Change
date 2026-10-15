@@ -2,20 +2,43 @@ import { combineTrackPlan } from "./wave-combine.js";
 import { shortGroupLabel } from "./grouping.js";
 
 export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
-  function confirmWriteChanges(count, includesLtcMute = false) {
+  function loosePermissionNote(looseCount) {
+    return looseCount > 1
+      ? `其中 ${looseCount} 个是单独拖入的文件，浏览器会对每个文件分别询问写入权限；改为拖入或选择所在文件夹只需授权一次。`
+      : "";
+  }
+
+  function confirmWriteChanges(count, includesLtcMute = false, { looseCount = 0 } = {}) {
     return showConfirmDialog({
       title: "确认写入文件？",
       danger: true,
       confirmText: "确认写入",
-      copy: includesLtcMute
-        ? [
-          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
-          "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
-        ].join("<br>")
-        : [
-          `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
-          "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
-        ].join("<br>"),
+      copy: [
+        ...(includesLtcMute
+          ? [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference，并将检测到的 LTC 声道/分轨静音。`,
+            "<strong>静音音频轨道或分轨无法用撤销按钮恢复</strong>，请确认已有原始文件备份。"
+          ]
+          : [
+            `即将写入 <strong>${count}</strong> 个 WAV 的 BWF TimeReference。`,
+            "<strong>建议在修改前先备份原始文件</strong>，确认备份或可恢复后再继续。"
+          ]),
+        loosePermissionNote(looseCount),
+      ].filter(Boolean).join("<br>"),
+    });
+  }
+
+  function confirmLooseFileImport(looseCount) {
+    return showConfirmDialog({
+      title: "建议改为导入文件夹",
+      primary: true,
+      cancelText: "仍使用这些文件",
+      confirmText: "改为选择文件夹…",
+      copy: [
+        `你单独拖入了 <strong>${looseCount}</strong> 个 WAV。浏览器只给单独拖入的文件读取权限，写入时会<strong>对每个文件各弹一次授权，共 ${looseCount} 次</strong>。`,
+        "改为导入它们所在的文件夹，写入只需授权一次，分轨 take 也能自动识别。选好文件夹后，会用文件夹里的内容替换刚才拖入的这批文件。",
+        "如果文件直接放在“下载”“桌面”“文稿”里，浏览器不允许选择这些文件夹，请先把文件移进一个子文件夹。"
+      ].join("<br>"),
     });
   }
 
@@ -87,8 +110,10 @@ export function createConfirmFlows({ showConfirmDialog, fpsSelectLabel }) {
 
   return {
     confirmCombinePoly,
+    confirmLooseFileImport,
     confirmLtcFpsMismatch,
     confirmMetadataFpsMismatch,
     confirmWriteChanges,
+    loosePermissionNote,
   };
 }

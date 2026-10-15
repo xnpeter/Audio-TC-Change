@@ -1,4 +1,4 @@
-const CACHE_NAME = "bwf-timecode-batch-v0.4.13";
+const CACHE_NAME = "bwf-timecode-batch-v1.2.2";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const APP_ASSETS = [
   "./src/dialogs.js",
   "./src/file-import.js",
   "./src/fps-metadata.js",
+  "./src/fps-write-controller.js",
   "./src/grouping.js",
   "./src/ltc-decoder.js",
   "./src/ltc-controller.js",
@@ -29,18 +30,23 @@ const APP_ASSETS = [
   "./src/video-metadata.js",
   "./src/wave-audio.js",
   "./src/wave-combine.js",
+  "./src/wave-fps-metadata.js",
   "./src/wave.js",
   "./src/wave-time-reference.js",
+  "./src/workspace-layout.js",
+  "./src/write-permission.js",
   "./bwf-timecode.webmanifest",
-  "./bwf-timecode-icon.svg",
-  "./bwf-timecode-icon-192.png",
-  "./bwf-timecode-icon-512.png"
+  "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-maskable-512.png",
+  "./icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_ASSETS))
+      .then(cache => cache.addAll(APP_ASSETS.map(url => new Request(url, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });

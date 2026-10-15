@@ -124,25 +124,7 @@ export function fpsValueEquivalent(aValue, bValue) {
   return fpsEquivalent(parseFps(aValue), parseFps(bValue));
 }
 
-export function ixmlRateToFpsValue(ixmlInfo) {
-  const rawRate = ixmlInfo?.timecodeRate?.value;
-  if (!rawRate) return null;
-  const flag = (ixmlInfo?.timecodeFlag?.value || "").toUpperCase();
-  const drop = flag === "DF" || flag === "DROP" || flag === "DROPFRAME";
-  let numeric = null;
-
-  try {
-    if (rawRate.includes("/")) {
-      const [n, d] = rawRate.split("/").map(value => Number(value.trim()));
-      if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) numeric = n / d;
-    } else {
-      const match = rawRate.match(/\d+(?:\.\d+)?/);
-      if (match) numeric = Number(match[0]);
-    }
-  } catch (error) {
-    return null;
-  }
-
+export function numericRateToFpsValue(numeric, drop = false) {
   if (!Number.isFinite(numeric)) return null;
   if (Math.abs(numeric - 24) < 0.0002) return "24";
   if (Math.abs(numeric - 25) < 0.0002) return "25";
@@ -158,6 +140,81 @@ export function ixmlRateToFpsValue(ixmlInfo) {
   if (Math.abs(numeric - 60000 / 1001) < 0.0002) return drop ? "59.94df" : "59.94";
   if (Math.abs(numeric - 120000 / 1001) < 0.0002) return drop ? "119.88df" : "119.88";
   return null;
+}
+
+function dropFlagValue(flag) {
+  const normalized = String(flag || "").toUpperCase();
+  return normalized === "DF" || normalized === "DROP" || normalized === "DROPFRAME";
+}
+
+export function ixmlRateToFpsValue(ixmlInfo) {
+  const rawRate = ixmlInfo?.timecodeRate?.value;
+  if (!rawRate) return null;
+  const drop = dropFlagValue(ixmlInfo?.timecodeFlag?.value);
+  let numeric = null;
+
+  try {
+    if (rawRate.includes("/")) {
+      const [n, d] = rawRate.split("/").map(value => Number(value.trim()));
+      if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) numeric = n / d;
+    } else {
+      const match = rawRate.match(/\d+(?:\.\d+)?/);
+      if (match) numeric = Number(match[0]);
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return numericRateToFpsValue(numeric, drop);
+}
+
+const ASPEED_RE = /\baSPEED\s*=\s*(\d+(?:\.\d+)?)(?:\s*-\s*([A-Za-z]+))?/i;
+const BEXT_DESCRIPTION_SIZE = 256;
+
+export function parseBextAspeed(text) {
+  if (!text) return null;
+  const match = String(text).match(ASPEED_RE);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  const fpsValue = numericRateToFpsValue(numeric, dropFlagValue(match[2]));
+  if (!fpsValue) return null;
+  return {
+    raw: match[0],
+    rate: match[1],
+    flag: match[2] || "",
+    fpsValue,
+  };
+}
+
+export function bextAspeedToFpsValue(bextInfo) {
+  return parseBextAspeed(bextInfo?.description)?.fpsValue || null;
+}
+
+export function aspeedTextForValue(value) {
+  const fps = parseFps(value);
+  const rate = fpsRate(fps);
+  const numeric = Number(rate.n) / Number(rate.d);
+  const formatted = numeric.toFixed(3).padStart(7, "0");
+  return `aSPEED=${formatted}-${fps.drop ? "DF" : "ND"}`;
+}
+
+export function updateBextDescriptionAspeed(description, fpsValue, { create = false } = {}) {
+  const nextAspeed = aspeedTextForValue(fpsValue);
+  const text = String(description || "");
+  if (ASPEED_RE.test(text)) return text.replace(ASPEED_RE, nextAspeed);
+  if (!create) return null;
+  const trimmed = text.replace(/\0+$/g, "").trimEnd();
+  return trimmed ? `${trimmed}\r\n${nextAspeed}` : `${nextAspeed}\r\n`;
+}
+
+export function bextDescriptionFieldBytes(text) {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.length >= BEXT_DESCRIPTION_SIZE) {
+    throw new Error("bext Description 无法容纳 aSPEED");
+  }
+  const bytes = new Uint8Array(BEXT_DESCRIPTION_SIZE);
+  bytes.set(encoded);
+  return bytes;
 }
 
 

@@ -4,6 +4,7 @@ import {
   recordLabel,
   shortGroupLabel,
 } from "./grouping.js";
+import { fpsActionLabel } from "./wave-fps-metadata.js";
 
 export function createPreviewTableRenderer({
   els,
@@ -45,6 +46,7 @@ export function createPreviewTableRenderer({
     if (source === "iXML" || source === "ALE/CSV") return "fps-badge ixml";
     if (source === "LTC检测") return "fps-badge ltc";
     if (source === "视频元数据") return "fps-badge video";
+    if (source === "FPS预览") return "fps-badge preview";
     return "fps-badge";
   }
 
@@ -53,11 +55,112 @@ export function createPreviewTableRenderer({
     return ltc.qualityRank === 1 ? "ltc-value-warn" : "ltc-value-ok";
   }
 
+  function formatLabel(record) {
+    const parts = [];
+    if (record.sampleRate) parts.push(`${Number((record.sampleRate / 1000).toFixed(3))}k`);
+    if (record.bitsPerSample) parts.push(`${record.bitsPerSample}bit`);
+    if (record.channels) parts.push(`${record.channels}ch`);
+    return parts.length ? parts.join(" · ") : "-";
+  }
+
+  function valueCell(oldValue, newValue, synced = false, extraClass = "") {
+    const td = document.createElement("td");
+    td.className = `mono value-cell ${extraClass}`.trim();
+    const current = document.createElement("span");
+    current.textContent = String(oldValue);
+    if (newValue == null || String(newValue) === String(oldValue)) {
+      if (synced) td.classList.add("ltc-value-ok");
+      td.appendChild(current);
+      return td;
+    }
+    current.className = "old-value";
+    const next = document.createElement("span");
+    next.className = "new-value";
+    next.textContent = String(newValue);
+    td.append(current, next);
+    return td;
+  }
+
   let lastSelectedKey = null;
+  let displayedRecords = [];
 
   function selectableRecords() {
-    return getRecords().filter(record => !record._meta);
+    return displayedRecords.filter(record => !record._meta);
   }
+
+  function seconds(samples, record) {
+    if (samples == null) return null;
+    return Number(samples) / (record.sampleRate || 48000);
+  }
+
+  const sortValues = {
+    name: record => `${record.name || ""}\u0000${recordLabel(record)}`,
+    format: record => (record.sampleRate || 0) * 1e4 + (record.bitsPerSample || 0) * 100 + (record.channels || 0),
+    fps: record => {
+      const { rate, drop } = recordFps(record) || {};
+      return rate ? Number(rate.n) / Number(rate.d) + (drop ? 0.001 : 0) : null;
+    },
+    start: record => seconds(record.oldTimeReference, record),
+    end: record => record.oldTimeReference == null || record.durationSamples == null
+      ? null
+      : seconds(BigInt(record.oldTimeReference) + BigInt(record.durationSamples), record),
+    timeReference: record => record.oldTimeReference == null ? null : Number(record.oldTimeReference),
+    ltc: record => {
+      const ltc = getLtcResults().get(recordKey(record));
+      return ltc?.timecode && ltc.newTimeReference != null ? seconds(ltc.newTimeReference, record) : null;
+    },
+    duration: record => seconds(record.durationSamples, record),
+  };
+
+  const SORT_STORAGE_KEY = "audioTc.tableSort";
+  let sortState = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) || "null");
+    if (saved && sortValues[saved.key] && (saved.dir === 1 || saved.dir === -1)) sortState = saved;
+  } catch {}
+
+  const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+  // Missing values (e.g. no LTC detected yet) stay at the bottom in both directions.
+  function compareValues(a, b, dir) {
+    if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+    const result = typeof a === "string" ? nameCollator.compare(a, b) : a - b;
+    return result * dir;
+  }
+
+  function sortedGroups(groups) {
+    const entries = Array.from(groups.entries());
+    if (!sortState) return entries;
+    const valueOf = sortValues[sortState.key];
+    const { dir } = sortState;
+    const sorted = entries.map(([key, groupRecords], index) => {
+      const ranked = groupRecords
+        .map((record, order) => ({ record, order, value: valueOf(record) }))
+        .sort((a, b) => compareValues(a.value, b.value, dir) || a.order - b.order);
+      return { key, index, records: ranked.map(item => item.record), lead: ranked[0]?.value ?? null };
+    });
+    sorted.sort((a, b) => compareValues(a.lead, b.lead, dir) || a.index - b.index);
+    return sorted.map(({ key, records }) => [key, records]);
+  }
+
+  function updateSortHeaders() {
+    els.previewTable.querySelectorAll("th[data-sort]").forEach(th => {
+      const active = sortState?.key === th.dataset.sort;
+      th.setAttribute("aria-sort", active ? (sortState.dir === 1 ? "ascending" : "descending") : "none");
+      th.classList.toggle("sorted", active);
+    });
+  }
+
+  els.previewTable.querySelector("thead")?.addEventListener("click", event => {
+    const th = event.target.closest("th[data-sort]");
+    if (!th) return;
+    const key = th.dataset.sort;
+    if (sortState?.key !== key) sortState = { key, dir: 1 };
+    else if (sortState.dir === 1) sortState = { key, dir: -1 };
+    else sortState = null;
+    try { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sortState)); } catch {}
+    renderRows();
+  });
 
   function setGroupSelection(groupRecords, event) {
     if (!setSelectedRecordKeys) return;
@@ -146,8 +249,11 @@ export function createPreviewTableRenderer({
     const sampleOffsets = new Set();
     const fallbackFps = defaultDisplayFps();
     const previewByName = new Map(previews.map(preview => [recordKey(preview), preview]));
+    const isFpsMetadataPreview = previews.some(preview => preview.operation === "fps-metadata");
     const showLtc = Array.from(ltcResults.values()).some(result => result.status !== "idle");
-    const groups = recordsByGroup();
+    const groups = sortedGroups(recordsByGroup());
+    displayedRecords = groups.flatMap(([, groupRecords]) => groupRecords);
+    updateSortHeaders();
 
     for (const [key, groupRecords] of groups) {
       const isTrackGroup = groupRecords.length > 1 && groupRecords.every(isTakeTrack);
@@ -157,7 +263,7 @@ export function createPreviewTableRenderer({
         groupRow.dataset.groupRecordKeys = groupRecords.map(recordKey).join("\n");
         groupRow.addEventListener("click", event => setGroupSelection(groupRecords, event));
         const td = document.createElement("td");
-        td.colSpan = 15;
+        td.colSpan = 10;
         const detected = groupRecords.map(record => ltcResults.get(recordKey(record))).find(result => result?.timecode);
         const detectedRecord = detected?.record || groupRecords[0];
         const detectedStartTc = detected ? ltcStartTimecode(detected, detectedRecord) : "";
@@ -180,65 +286,92 @@ export function createPreviewTableRenderer({
         const preview = previewByName.get(recordKey(record));
         const ltc = ltcResults.get(recordKey(record));
         const ltcFps = ltcFpsDisplay(ltc);
-        const fps = preview?.fps || ltcFps?.fps || recordFps(record);
+        const rowIsFpsMetadataPreview = preview?.operation === "fps-metadata";
+        const oldFps = rowIsFpsMetadataPreview
+          ? preview.oldFps
+          : preview?.fps || ltcFps?.fps || recordFps(record);
+        const newFps = preview?.fps || oldFps;
         const fpsSource = preview?.fpsSource || ltcFps?.source || recordFpsSource(record);
         const recordWasChanged = changedTimeReferences.get(recordKey(record)) === record.oldTimeReference;
         sampleRates.add(record.sampleRate);
-        if (preview) sampleOffsets.add(preview.sampleOffset.toString());
+        if (preview && !rowIsFpsMetadataPreview) sampleOffsets.add(preview.sampleOffset.toString());
         const row = document.createElement("tr");
         row.dataset.recordKey = recordKey(record);
         row.addEventListener("click", event => toggleRecordSelection(record, event));
         if (record._meta) row.classList.add("meta-record");
         if (record._video) row.classList.add("video-record");
-        const cells = [
-          recordLabel(record),
-          record.sampleRate || "-",
-          record.channels || "-",
-          record.bitsPerSample || "-",
-          preview?.fpsDisplay || ltcFps?.display || recordFpsDisplay(record),
-          samplesToTimecode(record.oldTimeReference, record.sampleRate || 48000, fps, { wrapDay: true }),
-          preview ? samplesToTimecode(preview.newTimeReference, record.sampleRate || 48000, fps, { wrapDay: true }) : "待预览",
-          samplesToTimecode(record.oldTimeReference + record.durationSamples, record.sampleRate || 48000, fps, { wrapDay: true }),
-          preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, record.sampleRate || 48000, fps, { wrapDay: true }) : "待预览",
-          record.oldTimeReference,
-          preview ? preview.newTimeReference : "待预览",
-          ltc ? ltcStartTimecode(ltc, record) : "待检测",
-          ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测",
-          formatDuration(record.durationSamples, record.sampleRate || 48000),
-        ];
-        cells.forEach((cell, index) => {
-          const td = document.createElement("td");
-          if (index === 0 && isTrackGroup) {
-            const name = document.createElement("span");
-            name.className = "track-name";
-            name.textContent = record.name;
-            td.appendChild(name);
-          } else if (index === 4) {
-            const badge = document.createElement("span");
-            badge.className = fpsBadgeClass(fpsSource);
-            badge.textContent = String(cell);
-            td.appendChild(badge);
-          } else {
-            td.textContent = String(cell);
-          }
-          if ([5, 6, 7, 8, 9, 10, 11].includes(index)) td.classList.add("mono");
-          if (!preview && [6, 8, 10].includes(index)) td.classList.add("pending");
-          if (preview && [6, 8, 10].includes(index)) td.classList.add("new-value");
-          if (!preview && recordWasChanged && [5, 7].includes(index)) td.classList.add("ltc-value-ok");
-          if ([11, 12].includes(index)) td.classList.add("ltc-col");
-          if (index === 11 && (!ltc || !ltc.timecode)) td.classList.add("pending");
-          if ([11, 12].includes(index)) {
-            const qualityClass = ltcValueClass(ltc);
-            if (qualityClass) td.classList.add(qualityClass);
-          }
-          row.appendChild(td);
-        });
+
+        const sampleRate = record.sampleRate || 48000;
+        const endSamples = record.oldTimeReference + record.durationSamples;
+        const tcOptions = { wrapDay: true };
+
+        const nameCell = document.createElement("td");
+        nameCell.className = "file-cell";
+        const name = document.createElement("span");
+        if (isTrackGroup) name.className = "track-name";
+        name.textContent = isTrackGroup ? record.name : recordLabel(record);
+        nameCell.appendChild(name);
+
+        const formatCell = document.createElement("td");
+        formatCell.className = "format-cell";
+        formatCell.textContent = formatLabel(record);
+
+        const fpsCell = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = fpsBadgeClass(fpsSource);
+        badge.textContent = String(preview?.fpsDisplay || ltcFps?.display || recordFpsDisplay(record));
+        fpsCell.appendChild(badge);
+
+        const ltcTimecodeCell = document.createElement("td");
+        ltcTimecodeCell.className = "mono ltc-col";
+        ltcTimecodeCell.textContent = ltc ? ltcStartTimecode(ltc, record) : "待检测";
+        if (!ltc || !ltc.timecode) ltcTimecodeCell.classList.add("pending");
+        const ltcStatusCell = document.createElement("td");
+        ltcStatusCell.className = "ltc-col ltc-status";
+        ltcStatusCell.textContent = ltc ? ltcStatusText(ltc, record, fallbackFps) : "待检测";
+        const qualityClass = ltcValueClass(ltc);
+        if (qualityClass) {
+          ltcTimecodeCell.classList.add(qualityClass);
+          ltcStatusCell.classList.add(qualityClass);
+        }
+
+        const durationCell = document.createElement("td");
+        durationCell.className = "mono duration-cell";
+        durationCell.textContent = formatDuration(record.durationSamples, sampleRate);
+
+        row.append(
+          nameCell,
+          formatCell,
+          fpsCell,
+          valueCell(
+            samplesToTimecode(record.oldTimeReference, sampleRate, oldFps, tcOptions),
+            preview ? samplesToTimecode(preview.newTimeReference, sampleRate, newFps, tcOptions) : null,
+            !preview && recordWasChanged,
+          ),
+          valueCell(
+            samplesToTimecode(endSamples, sampleRate, oldFps, tcOptions),
+            preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, sampleRate, newFps, tcOptions) : null,
+            !preview && recordWasChanged,
+          ),
+          valueCell(record.oldTimeReference, preview ? preview.newTimeReference : null, false, "time-reference"),
+          ltcTimecodeCell,
+          ltcStatusCell,
+          durationCell,
+        );
         const recordWasCombined = combinedPolyKeys.has(recordKey(record));
         const result = document.createElement("td");
         const pill = document.createElement("span");
         const hasOp = preview || recordWasChanged || recordWasCombined;
         pill.className = hasOp ? "pill ok" : "pill idle";
-        if (preview && !recordWasCombined) {
+        if (rowIsFpsMetadataPreview) {
+          const action = preview.fpsAction || "unchanged";
+          pill.textContent = fpsActionLabel(action);
+          if (String(action).startsWith("skip")) {
+            pill.className = "pill warn";
+          } else if (action === "unchanged") {
+            pill.className = "pill idle";
+          }
+        } else if (preview && !recordWasCombined) {
           pill.textContent = "Ready";
         } else if (recordWasChanged && recordWasCombined) {
           pill.textContent = "已更改并合并";
@@ -262,12 +395,19 @@ export function createPreviewTableRenderer({
     els.offsetFrames.textContent = activeOffset ? activeOffset.frames.toString() : "-";
     els.offsetSamples.textContent = sampleOffsets.size ? Array.from(sampleOffsets).join(", ") : "-";
     els.sampleRates.textContent = sampleRates.size ? Array.from(sampleRates).join(", ") : "-";
-    els.phasePill.textContent = previews.length ? "修改预览" : "原始信息";
+    els.phasePill.textContent = isFpsMetadataPreview ? "帧率预览" : previews.length ? "修改预览" : "原始信息";
     els.extractLtcBtn.disabled = records.length === 0;
     if (els.clearListBtn) els.clearListBtn.disabled = records.length === 0;
-    els.combinePolyBtn.disabled = combineEligibleGroups().length === 0;
-    els.writeLtcBtn.disabled = !Array.from(ltcResults.values()).some(canWriteLtcResult);
-    els.exportMetadataBtn.disabled = resolveMetadataItems().length === 0;
+    if (els.fpsMetadataBtn) {
+      els.fpsMetadataBtn.disabled = !records.some(record =>
+        !record._meta &&
+        !record._video &&
+        typeof record.fileHandle?.createWritable === "function"
+      );
+    }
+    els.combinePolyBtn.disabled = isFpsMetadataPreview || combineEligibleGroups().length === 0;
+    els.writeLtcBtn.disabled = isFpsMetadataPreview || !Array.from(ltcResults.values()).some(canWriteLtcResult);
+    els.exportMetadataBtn.disabled = isFpsMetadataPreview || resolveMetadataItems().length === 0;
     updateSelectionUi();
   }
 

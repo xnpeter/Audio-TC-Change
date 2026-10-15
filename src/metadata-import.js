@@ -128,10 +128,14 @@ function parseCsv(text) {
   return rows;
 }
 
-function normalizeFpsValue(raw) {
-  const t = raw.trim();
+function timecodeUsesDropFrame(value) {
+  return String(value || "").includes(";");
+}
+
+function normalizeFpsValue(raw, timecodes = []) {
+  const t = String(raw ?? "").trim();
   if (!t) return "24";
-  const isDF = /df$/i.test(t);
+  const isDF = /df$/i.test(t) || timecodes.some(timecodeUsesDropFrame);
   const numericPart = t.replace(/\s*df$/i, "").trim();
   const parsed = parseFloat(numericPart);
   if (isNaN(parsed)) return "24";
@@ -158,7 +162,7 @@ function normalizeFpsValue(raw) {
 }
 
 function metadataToRecord(meta) {
-  const fpsValue = normalizeFpsValue(meta.fps);
+  const fpsValue = normalizeFpsValue(meta.fps, [meta.start, meta.end, meta.duration]);
   const fps = parseFps(fpsValue);
   const sampleRate = parseInt(meta.audioSR, 10) || DEFAULT_SAMPLE_RATE;
   const channels = parseInt(meta.audioChannels, 10) || DEFAULT_CHANNELS;

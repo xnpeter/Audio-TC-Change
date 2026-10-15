@@ -15,6 +15,7 @@ export function createDialogController(els) {
     confirmResult = true,
     altResult = "alt",
     danger = false,
+    primary = false,
   }) {
     return new Promise(resolve => {
       const previousFocus = document.activeElement;
@@ -62,6 +63,7 @@ export function createDialogController(els) {
       }
       els.confirmWriteBtn.textContent = confirmText;
       els.confirmWriteBtn.classList.toggle("danger", danger);
+      els.confirmWriteBtn.classList.toggle("primary", primary && !danger);
       els.confirmOverlay.classList.add("show");
       els.confirmOverlay.setAttribute("aria-hidden", "false");
       els.confirmCancelBtn.addEventListener("click", onCancel);
@@ -108,7 +110,7 @@ export function createDialogController(els) {
       els.confirmCancelBtn.textContent = "取消";
       els.confirmAltBtn.textContent = "ALE";
       els.confirmWriteBtn.textContent = "Resolve CSV";
-      els.confirmWriteBtn.classList.remove("danger");
+      els.confirmWriteBtn.classList.remove("danger", "primary");
       els.confirmAltBtn.hidden = false;
       els.confirmOverlay.classList.add("show");
       els.confirmOverlay.setAttribute("aria-hidden", "false");

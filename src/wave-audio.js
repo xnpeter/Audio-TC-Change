@@ -1,11 +1,12 @@
-import { LITTLE, readDataView } from "./wave.js";
+import { LITTLE, isIeeeFloat, readDataView } from "./wave.js";
 
 export function readAudioSample(view, offset, record) {
   const bytes = record.bitsPerSample / 8;
   if (!Number.isInteger(bytes)) throw new Error(`${record.name}: 不支持 ${record.bitsPerSample} bit 音频`);
-  if (record.audioFormat === 3 && record.bitsPerSample === 32) return view.getFloat32(offset, LITTLE);
+  if (isIeeeFloat(record) && record.bitsPerSample === 32) return view.getFloat32(offset, LITTLE);
+  if (isIeeeFloat(record) && record.bitsPerSample === 64) return view.getFloat64(offset, LITTLE);
   if (record.audioFormat !== 1 && record.audioFormat !== 65534) {
-    throw new Error(`${record.name}: 当前只支持 PCM / Extensible PCM WAV`);
+    throw new Error(`${record.name}: 当前只支持 PCM / IEEE Float / Extensible WAV`);
   }
   if (record.bitsPerSample === 8) return (view.getUint8(offset) - 128) / 128;
   if (record.bitsPerSample === 16) return view.getInt16(offset, LITTLE) / 32768;
@@ -19,7 +20,7 @@ export function readAudioSample(view, offset, record) {
 }
 
 export function writeSilenceSample(view, offset, record) {
-  if (record.bitsPerSample === 8 && record.audioFormat === 1) {
+  if (record.bitsPerSample === 8 && !isIeeeFloat(record)) {
     view.setUint8(offset, 128);
     return;
   }

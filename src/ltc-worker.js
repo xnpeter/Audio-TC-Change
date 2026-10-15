@@ -56,7 +56,9 @@ export const LTC_WORKER_CODE = `
   function frameDigitsFor(fps) { return fps.nominal >= 100n ? 3 : 2; }
   function timecodeSeparator(fps) { return fps.drop ? ";" : ":"; }
   function readAudioSample(view, offset, record) {
-    if (record.audioFormat === 3 && record.bitsPerSample === 32) return view.getFloat32(offset, LITTLE);
+    const isFloat = record.isFloat || record.audioFormat === 3;
+    if (isFloat && record.bitsPerSample === 32) return view.getFloat32(offset, LITTLE);
+    if (isFloat && record.bitsPerSample === 64) return view.getFloat64(offset, LITTLE);
     if (record.bitsPerSample === 8) return (view.getUint8(offset) - 128) / 128;
     if (record.bitsPerSample === 16) return view.getInt16(offset, LITTLE) / 32768;
     if (record.bitsPerSample === 24) {

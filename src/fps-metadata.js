@@ -1,4 +1,5 @@
 import {
+  bextAspeedToFpsValue,
   fpsLabel,
   fpsValueEquivalent,
   ixmlRateToFpsValue,
@@ -19,10 +20,14 @@ export function createFpsMetadataController({ fpsInput }) {
     return record._meta?.fpsValue || "";
   }
 
+  function fileMetadataFpsValue(record) {
+    return ixmlRateToFpsValue(record.ixmlInfo) || bextAspeedToFpsValue(record.bextInfo) || "";
+  }
+
   function detectedMetadataFps(recordsToCheck) {
     const counts = new Map();
     for (const record of recordsToCheck) {
-      const value = ixmlRateToFpsValue(record.ixmlInfo) || metaFpsValue(record);
+      const value = fileMetadataFpsValue(record) || metaFpsValue(record);
       if (!value) continue;
       counts.set(value, (counts.get(value) || 0) + 1);
     }
@@ -37,7 +42,7 @@ export function createFpsMetadataController({ fpsInput }) {
   }
 
   function recordFpsValue(record) {
-    return ixmlRateToFpsValue(record.ixmlInfo) || metaFpsValue(record) || fpsInput.value;
+    return fileMetadataFpsValue(record) || metaFpsValue(record) || fpsInput.value;
   }
 
   function recordFps(record) {
@@ -46,6 +51,7 @@ export function createFpsMetadataController({ fpsInput }) {
 
   function recordFpsSource(record) {
     if (ixmlRateToFpsValue(record.ixmlInfo)) return "iXML";
+    if (bextAspeedToFpsValue(record.bextInfo)) return "bext aSPEED";
     if (importedMetadataFpsValue(record)) return "ALE/CSV";
     if (record._video?.fpsValue) return "视频元数据";
     return "界面设置";
