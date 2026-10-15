@@ -6,6 +6,7 @@ import {
 import { probeVideoMetadata } from "./video-metadata.js";
 
 const MOV_PCM_SAMPLE_TYPES = new Set(["lpcm", "twos", "sowt", "in24", "in32", "fl32", "fl64"]);
+const deferredAudio = new WeakMap();
 
 function extensionLabel(name) {
   const match = String(name || "").match(/\.([^.]+)$/);
@@ -235,6 +236,60 @@ function durationSamplesFromSeconds(seconds, sampleRate) {
   return BigInt(Math.round(seconds * sampleRate));
 }
 
+async function decodeContainerAudio(sourceFile, containerMeta) {
+  try {
+    return await decodeMovPcmAudio(sourceFile, containerMeta);
+  } catch {
+    const audioBuffer = await decodeVideoAudio(sourceFile);
+    const sampleRate = assertWebAudioSampleRate(
+      sourceFile.name, audioBuffer.sampleRate, containerAudioSampleRate(containerMeta),
+    );
+    return {
+      interleaved: interleaveAudioBuffer(audioBuffer),
+      sampleRate,
+      channels: audioBuffer.numberOfChannels,
+      sourceBitsPerSample: 32,
+      source: "Web Audio",
+    };
+  }
+}
+
+// Importing a video with container timecode need not decode its audio. Explicit
+// LTC extraction must prepare that audio before either the worker or fallback scan.
+export async function ensureVideoAudioForLtc(record) {
+  const deferred = deferredAudio.get(record);
+  if (!deferred) return record;
+  if (!deferred.pending) {
+    deferred.pending = (async () => {
+      try {
+        const audio = await decodeContainerAudio(record.sourceFile, deferred.containerMeta);
+        if (!audio.channels || !audio.interleaved.length) {
+          throw new Error(`${record.name}: 视频音轨没有可供 LTC 检测的采样`);
+        }
+        Object.assign(record, {
+          file: new Blob([audio.interleaved.buffer], { type: "application/octet-stream" }),
+          sampleRate: audio.sampleRate,
+          channels: audio.channels,
+          blockAlign: audio.channels * 4,
+          dataSize: audio.interleaved.byteLength,
+          durationSamples: BigInt(audio.interleaved.length / audio.channels),
+          oldTimeReference: timeReferenceFromTimecode(record._video.startTc, record._video.fpsValue, audio.sampleRate),
+        });
+        record._video.audioBitDepth = String(audio.sourceBitsPerSample || 32);
+        record._video.audioDecodeSkipped = false;
+        record._video.audioDecodeError = "";
+        deferredAudio.delete(record);
+        return record;
+      } catch (error) {
+        deferred.pending = null;
+        record._video.audioDecodeError = error.message || String(error);
+        throw error;
+      }
+    })();
+  }
+  return deferred.pending;
+}
+
 export async function scanVideo(fileHandle, meta = {}) {
   const sourceFile = await fileHandle.getFile();
   const [elementResult, containerResult] = await Promise.allSettled([
@@ -259,24 +314,9 @@ export async function scanVideo(fileHandle, meta = {}) {
     };
   } else {
     try {
-      audioResult = { status: "fulfilled", value: await decodeMovPcmAudio(sourceFile, containerMeta) };
-    } catch {
-      try {
-        const audioBuffer = await decodeVideoAudio(sourceFile);
-        assertWebAudioSampleRate(sourceFile.name, audioBuffer.sampleRate, originalSampleRate);
-        audioResult = {
-          status: "fulfilled",
-          value: {
-            interleaved: interleaveAudioBuffer(audioBuffer),
-            sampleRate: originalSampleRate,
-            channels: audioBuffer.numberOfChannels,
-            sourceBitsPerSample: 32,
-            source: "Web Audio",
-          },
-        };
-      } catch (error) {
-        audioResult = { status: "rejected", reason: error };
-      }
+      audioResult = { status: "fulfilled", value: await decodeContainerAudio(sourceFile, containerMeta) };
+    } catch (error) {
+      audioResult = { status: "rejected", reason: error };
     }
   }
   const decodedAudio = audioResult.status === "fulfilled" ? audioResult.value : null;
@@ -296,7 +336,7 @@ export async function scanVideo(fileHandle, meta = {}) {
     : durationSamplesFromSeconds(durationSeconds, sampleRate);
   const oldTimeReference = timeReferenceFromTimecode(containerMeta.startTc, containerMeta.fpsValue, sampleRate);
 
-  return {
+  const record = {
     fileHandle: null,
     sourceFileHandle: fileHandle,
     sourceFile,
@@ -340,4 +380,8 @@ export async function scanVideo(fileHandle, meta = {}) {
       audioDecodeSkipped: Boolean(containerMeta.startTc),
     },
   };
+  if (record._video.audioDecodeSkipped && containerMeta.audioCodec) {
+    deferredAudio.set(record, { containerMeta, pending: null });
+  }
+  return record;
 }

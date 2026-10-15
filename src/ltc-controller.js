@@ -5,6 +5,7 @@ import {
   parseFps,
 } from "./timecode.js";
 import { readDataView } from "./wave.js";
+import { ensureVideoAudioForLtc } from "./video.js";
 import {
   ltcScanPriority,
   ltcScanRecords,
@@ -19,7 +20,7 @@ import { createLtcDecoder } from "./ltc-decoder.js";
 
 export const LTC_FULL_SCAN_MAX_BYTES = 8 * 1024 * 1024;
 
-export function ltcWorkerReadRanges({
+export function* ltcWorkerReadRanges({
   dataSize = 0,
   blockAlign = 1,
   sampleRate = 1,
@@ -40,29 +41,30 @@ export function ltcWorkerReadRanges({
   const limitedSamples = scanSeconds == null
     ? samplesAvailable
     : Math.min(samplesAvailable, Math.max(rate * scanSeconds, rate));
-  if (limitedSamples <= 0) return [];
+  if (limitedSamples <= 0) return;
 
   const chunkBytes = Math.max(align, Math.floor(Math.max(align, maxBytes) / align) * align);
   const samplesPerChunk = Math.max(1, Math.floor(chunkBytes / align));
   const wholeBytes = limitedSamples * align;
   if (wholeBytes <= chunkBytes) {
-    return [{ startSample: 0, sampleCount: limitedSamples, byteOffset: 0, byteLength: wholeBytes }];
+    yield { startSample: 0, sampleCount: limitedSamples, byteOffset: 0, byteLength: wholeBytes };
+    return;
   }
 
-  const overlapSamples = Math.min(samplesPerChunk - 1, Math.max(1, rate * 2));
+  // High channel counts can fit less than two seconds in a chunk. Always
+  // advance by at least half a chunk, keeping total reads below twice the input.
+  const overlapSamples = Math.min(Math.floor(samplesPerChunk / 2), Math.max(1, rate * 2));
   const step = Math.max(1, samplesPerChunk - overlapSamples);
-  const ranges = [];
   for (let start = 0; start < limitedSamples; start += step) {
     const sampleCount = Math.min(samplesPerChunk, limitedSamples - start);
-    ranges.push({
+    yield {
       startSample: start,
       sampleCount,
       byteOffset: start * align,
       byteLength: sampleCount * align,
-    });
+    };
     if (start + sampleCount >= limitedSamples) break;
   }
-  return ranges;
 }
 
 export function shiftLtcDetection(item, startSample, sampleRate) {
@@ -338,6 +340,7 @@ export function createLtcController({
       const fastAttempts = [];
       for (const record of scanRecords) {
         try {
+          await ensureVideoAudioForLtc(record);
           fastAttempts.push({ record, auto: await detectLtcFast(record, fps), error: null });
         } catch (error) {
           fastAttempts.push({ record, auto: null, error });
@@ -361,6 +364,7 @@ export function createLtcController({
       const attempts = [];
       for (const record of pass) {
         try {
+          await ensureVideoAudioForLtc(record);
           attempts.push({
             record,
             auto: ltcWorkerPool

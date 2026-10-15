@@ -12,14 +12,14 @@ import { framesToSamples, normalizeTimeReference, parseFps } from "../src/timeco
 test("a full-file LTC scan is split into capped overlapping slices", () => {
   const dataSize = 40 * 1024 * 1024;
   const blockAlign = 4;
-  const ranges = ltcWorkerReadRanges({
+  const ranges = Array.from(ltcWorkerReadRanges({
     dataSize,
     blockAlign,
     sampleRate: 48000,
     durationSamples: dataSize / blockAlign,
     scanSeconds: null,
     maxBytes: LTC_FULL_SCAN_MAX_BYTES,
-  });
+  }));
   assert.ok(ranges.length > 1);
   assert.equal(ranges[0].startSample, 0);
   let covered = 0;
@@ -34,26 +34,63 @@ test("a full-file LTC scan is split into capped overlapping slices", () => {
 });
 
 test("a short full-file scan and a 5 second scan stay one read", () => {
-  const short = ltcWorkerReadRanges({
+  const short = Array.from(ltcWorkerReadRanges({
     dataSize: 1000,
     blockAlign: 2,
     sampleRate: 48000,
     scanSeconds: null,
-  });
+  }));
   assert.equal(short.length, 1);
   assert.equal(short[0].byteLength, 1000);
 
-  const fast = ltcWorkerReadRanges({
+  const fast = Array.from(ltcWorkerReadRanges({
     dataSize: 100 * 1024 * 1024,
     blockAlign: 4,
     sampleRate: 48000,
     durationSamples: (100 * 1024 * 1024) / 4,
     scanSeconds: 5,
     maxBytes: LTC_FULL_SCAN_MAX_BYTES,
-  });
+  }));
   assert.equal(fast.length, 1);
   assert.equal(fast[0].sampleCount, 48000 * 5);
   assert.ok(fast[0].byteLength <= LTC_FULL_SCAN_MAX_BYTES);
+});
+
+test("high bandwidth WAV scans make progress with bounded overlap", () => {
+  for (const [channels, sampleRate, bytesPerSample] of [[16, 96000, 3], [32, 192000, 4]]) {
+    const blockAlign = channels * bytesPerSample;
+    const dataSize = sampleRate * blockAlign * 5;
+    const ranges = Array.from(ltcWorkerReadRanges({ dataSize, blockAlign, sampleRate }));
+    let covered = 0;
+    let readBytes = 0;
+    for (const range of ranges) {
+      assert.ok(range.byteLength <= LTC_FULL_SCAN_MAX_BYTES);
+      assert.ok(range.startSample <= covered);
+      assert.ok(range.startSample + range.sampleCount > covered);
+      covered = range.startSample + range.sampleCount;
+      readBytes += range.byteLength;
+    }
+    assert.equal(covered, sampleRate * 5);
+    assert.ok(readBytes < dataSize * 2);
+    assert.ok(ranges.length <= Math.ceil(dataSize / LTC_FULL_SCAN_MAX_BYTES) * 2);
+  }
+});
+
+test("scan ranges are lazy and an early match stops reading", async () => {
+  let reads = 0;
+  await forEachLtcScanChunk({
+    dataSize: Number.MAX_SAFE_INTEGER - 1,
+    blockAlign: 2,
+    sampleRate: 48000,
+    dataOffset: 44,
+    file: { slice(start, end) {
+      reads += 1;
+      assert.equal(start, 44);
+      assert.ok(end - start <= LTC_FULL_SCAN_MAX_BYTES);
+      return { arrayBuffer: async () => new ArrayBuffer(0) };
+    } },
+  }, null, async () => true);
+  assert.equal(reads, 1);
 });
 
 test("full-file scanning never arrayBuffers the whole data chunk", async () => {
