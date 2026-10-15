@@ -279,12 +279,18 @@ export function createFpsWriteController({
       for (let i = 0; i < writable.length; i++) {
         const preview = writable[i];
         updateWriteProgress("正在写入帧率元数据…", preview.name, i, writable.length);
-        const undoItem = await writeFpsMetadata(preview, preview.fpsTargetValue, {
-          writeIxml: preview.fpsWriteIxml,
-          createIxml: preview.createIxml,
-          writeAspeed: preview.fpsWriteAspeed,
-          createAspeed: preview.createAspeed,
-        });
+        let undoItem;
+        try {
+          undoItem = await writeFpsMetadata(preview, preview.fpsTargetValue, {
+            writeIxml: preview.fpsWriteIxml,
+            createIxml: preview.createIxml,
+            writeAspeed: preview.fpsWriteAspeed,
+            createAspeed: preview.createAspeed,
+          });
+        } catch (error) {
+          if (error.fpsUndo) undoItems.push(error.fpsUndo);
+          throw error;
+        }
         undoItems.push(undoItem);
         updateWriteProgress("正在写入帧率元数据…", preview.name, i + 1, writable.length);
       }

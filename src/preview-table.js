@@ -1,4 +1,5 @@
 import { formatDuration } from "./metadata-export.js";
+import { describeTimeReferenceConflict } from "./wave.js";
 import {
   recordKey,
   recordLabel,
@@ -311,6 +312,14 @@ export function createPreviewTableRenderer({
         if (isTrackGroup) name.className = "track-name";
         name.textContent = isTrackGroup ? record.name : recordLabel(record);
         nameCell.appendChild(name);
+        const conflictText = describeTimeReferenceConflict(record);
+        if (conflictText) {
+          const note = document.createElement("span");
+          note.className = "conflict-note";
+          note.textContent = "bext/iXML 不一致";
+          note.title = conflictText;
+          nameCell.appendChild(note);
+        }
 
         const formatCell = document.createElement("td");
         formatCell.className = "format-cell";
@@ -353,7 +362,12 @@ export function createPreviewTableRenderer({
             preview ? samplesToTimecode(preview.newTimeReference + record.durationSamples, sampleRate, newFps, tcOptions) : null,
             !preview && recordWasChanged,
           ),
-          valueCell(record.oldTimeReference, preview ? preview.newTimeReference : null, false, "time-reference"),
+          valueCell(
+            record.oldTimeReference,
+            preview ? preview.newTimeReference : null,
+            false,
+            record.timeReferenceConflict ? "time-reference time-reference-conflict" : "time-reference",
+          ),
           ltcTimecodeCell,
           ltcStatusCell,
           durationCell,
@@ -379,6 +393,10 @@ export function createPreviewTableRenderer({
           pill.textContent = "已更改";
         } else if (recordWasCombined) {
           pill.textContent = "已合并";
+        } else if (record.timeReferenceConflict) {
+          pill.className = "pill warn";
+          pill.textContent = "bext/iXML 不一致";
+          pill.title = describeTimeReferenceConflict(record);
         } else {
           pill.textContent = "Original";
         }

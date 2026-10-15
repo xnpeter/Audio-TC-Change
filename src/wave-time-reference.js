@@ -44,35 +44,79 @@ export function ixmlNeedsRewrite(record, value) {
   );
 }
 
-export function replaceIxmlFieldText(xml, tag, value) {
-  const pattern = new RegExp(`(<${tag}>)[\\s\\S]*?(</${tag}>)`);
-  return xml.replace(pattern, `$1${value}$2`);
+function asciiBytes(text) {
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
+  return bytes;
 }
 
-export function rewriteIxmlChunkText(xml, record, value, targetIxmlInfo = record.ixmlInfo) {
+function findBytes(haystack, needle, from = 0) {
+  if (!needle.length) return -1;
+  const limit = haystack.length - needle.length;
+  for (let i = Math.max(0, from); i <= limit; i++) {
+    let found = true;
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return i;
+  }
+  return -1;
+}
+
+export function replaceIxmlFieldBytes(data, tag, value) {
+  const open = asciiBytes(`<${tag}>`);
+  const close = asciiBytes(`</${tag}>`);
+  const openAt = findBytes(data, open);
+  if (openAt < 0) return data;
+  const valueStart = openAt + open.length;
+  const closeAt = findBytes(data, close, valueStart);
+  if (closeAt < 0) return data;
+  const replacement = asciiBytes(String(value));
+  const next = new Uint8Array(valueStart + replacement.length + (data.length - closeAt));
+  next.set(data.subarray(0, valueStart), 0);
+  next.set(replacement, valueStart);
+  next.set(data.subarray(closeAt), valueStart + replacement.length);
+  return next;
+}
+
+export function rewriteIxmlChunkBytes(data, record, value, targetIxmlInfo = record.ixmlInfo) {
   const parts = ixmlTimestampParts(value);
   const targetValue = ixmlTimeReferenceValue(targetIxmlInfo);
   const restoreTargetRaw = targetValue === value;
-  let next = xml;
-  if (record.ixmlInfo?.timestampHi || targetIxmlInfo?.timestampHi) {
-    const text = restoreTargetRaw && targetIxmlInfo?.timestampHi
-      ? targetIxmlInfo.timestampHi.raw
-      : parts.hi.toString();
-    next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI", text);
-  }
-  if (record.ixmlInfo?.timestampLo || targetIxmlInfo?.timestampLo) {
-    const text = restoreTargetRaw && targetIxmlInfo?.timestampLo
-      ? targetIxmlInfo.timestampLo.raw
-      : parts.lo.toString();
-    next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO", text);
-  }
-  if (record.ixmlInfo?.timestampSampleRate || targetIxmlInfo?.timestampSampleRate) {
-    const text = restoreTargetRaw && targetIxmlInfo?.timestampSampleRate
-      ? targetIxmlInfo.timestampSampleRate.raw
-      : String(record.sampleRate);
-    next = replaceIxmlFieldText(next, "TIMESTAMP_SAMPLE_RATE", text);
+  const fields = [
+    ["TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI", record.ixmlInfo?.timestampHi, targetIxmlInfo?.timestampHi, parts.hi],
+    ["TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO", record.ixmlInfo?.timestampLo, targetIxmlInfo?.timestampLo, parts.lo],
+    ["TIMESTAMP_SAMPLE_RATE", record.ixmlInfo?.timestampSampleRate, targetIxmlInfo?.timestampSampleRate, BigInt(record.sampleRate)],
+  ];
+  let next = data;
+  for (const [tag, sourceField, targetField, numeric] of fields) {
+    if (!sourceField && !targetField) continue;
+    const text = restoreTargetRaw && targetField ? targetField.raw : numeric.toString();
+    next = replaceIxmlFieldBytes(next, tag, text);
   }
   return next;
+}
+
+function ds64ExtensionTable(ds64, descriptors) {
+  const entries = [];
+  if (ds64?.table) {
+    for (const [id, size] of ds64.table) entries.push({ id, size });
+  }
+  const indexById = new Map(entries.map((entry, index) => [entry.id, index]));
+  for (const descriptor of descriptors) {
+    const size = descriptor.stream ? descriptor.size : BigInt(descriptor.data.byteLength);
+    const index = indexById.get(descriptor.id);
+    if (index !== undefined) {
+      entries[index] = { id: descriptor.id, size };
+    } else if (size > 0xffffffffn) {
+      indexById.set(descriptor.id, entries.length);
+      entries.push({ id: descriptor.id, size });
+    }
+  }
+  return entries;
 }
 
 export function ixmlFieldShape(info) {
@@ -172,8 +216,7 @@ export async function rewriteWaveTimeReference(record, value, writable, targetIx
       data = new Uint8Array(data);
       new DataView(data.buffer).setBigUint64(338, value, LITTLE);
     } else if (chunk.id === "iXML" && record.ixmlInfo) {
-      const xml = new TextDecoder("utf-8", { ignoreBOM: true }).decode(data);
-      data = new TextEncoder().encode(rewriteIxmlChunkText(xml, record, value, targetIxmlInfo));
+      data = rewriteIxmlChunkBytes(data, record, value, targetIxmlInfo);
     }
     descriptors.push({ id: chunk.id, data });
   }
@@ -203,13 +246,14 @@ export async function rewriteWaveTimeReference(record, value, writable, targetIx
   writePos = 12;
 
   let ds64Pos = null;
+  const ds64Table = outContainer === "RIFF" ? [] : ds64ExtensionTable(listed.ds64, descriptors);
   if (outContainer !== "RIFF") {
     ds64Pos = writePos;
-    const placeholder = new Uint8Array(36);
-    placeholder.set([0x64, 0x73, 0x36, 0x34], 0);
-    new DataView(placeholder.buffer).setUint32(4, 28, LITTLE);
-    await writable.write({ type: "write", position: writePos, data: placeholder });
-    writePos += placeholder.byteLength;
+    const placeholder = ds64ChunkData({ riffSize: 0, dataSize: 0, sampleCount: 0, table: ds64Table });
+    const header = chunkHeader("ds64", placeholder.byteLength);
+    await writable.write({ type: "write", position: writePos, data: header });
+    await writable.write({ type: "write", position: writePos + header.byteLength, data: placeholder });
+    writePos += header.byteLength + placeholder.byteLength;
   }
 
   const pad = new Uint8Array([0]);
@@ -244,7 +288,7 @@ export async function rewriteWaveTimeReference(record, value, writable, targetIx
     await writable.write({
       type: "write",
       position: ds64Pos + 8,
-      data: ds64ChunkData({ riffSize, dataSize: outDataSize, sampleCount }),
+      data: ds64ChunkData({ riffSize, dataSize: outDataSize, sampleCount, table: ds64Table }),
     });
   }
   await writable.truncate(writePos);
